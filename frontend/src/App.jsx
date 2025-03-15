@@ -1,35 +1,58 @@
-import { useState } from 'react'
-import reactLogo from '@assets/react.svg'
-import viteLogo from '/vite.svg'
 import '@styles/App.css'
+import 'normalize.css'
+import LoginPage from '@components/Login';
+import RegistrationPage from '@components/Registration';
+import HomePage from '@components/Home';
+import React, { useContext } from 'react';
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { AuthContext } from '@context/AuthContext';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 
 function App() {
-  const [count, setCount] = useState(0)
-
+  const { token } = useContext(AuthContext);
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
+    <div className="app-container">
+      <div className="background-animation">
+        {[...Array(30)].map((_, index) => {
+          const randomLeft = Math.random() * 100; // Случайное положение по горизонтали
+          const randomDelay = Math.random() * 5; // Случайная задержка анимации
+          const randomSize = Math.floor(Math.random() * 24) + 16; // Случайный размер (от 16px до 40px)
+          return (
+            <div
+              key={index}
+              className="symbol"
+              style={{
+                left: `${randomLeft}%`,
+                animationDelay: `${randomDelay}s`,
+                fontSize: `${randomSize}px`,
+              }}
+            >
+              {Math.random() > 0.5 ? '❌' : '⭕'}
+            </div>
+          );
+        })}
       </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+
+      <Router>
+        <ToastContainer />
+        <Routes>
+          <Route
+            path="/login"
+            element={token ? <Navigate to="/" /> : <LoginPage />}
+          />
+          <Route
+            path="/register"
+            element={token ? <Navigate to="/" /> : <RegistrationPage />}
+          />
+          <Route
+            path="/"
+            element={token ? <HomePage /> : <Navigate to="/login" />}
+          />
+        </Routes>
+      </Router>
+    </div>
+  );
 }
 
-export default App
+export default App;

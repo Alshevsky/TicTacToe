@@ -1,42 +1,47 @@
-#root {
-  max-width: 1280px;
-  margin: 0 auto;
-  padding: 2rem;
-  text-align: center;
+/* src/App.css */
+body {
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Скрыть скролл */
 }
 
-.logo {
-  height: 6em;
-  padding: 1.5em;
-  will-change: filter;
-  transition: filter 300ms;
-}
-.logo:hover {
-  filter: drop-shadow(0 0 2em #646cffaa);
-}
-.logo.react:hover {
-  filter: drop-shadow(0 0 2em #61dafbaa);
+.app-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  background: linear-gradient(red, blue);
+  display: flex;
+  justify-content: center;
+  align-items: center;
 }
 
-@keyframes logo-spin {
-  from {
-    transform: rotate(0deg);
+.background-animation {
+  position: fixed; /* Фон всегда на месте */
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  pointer-events: none; /* Фон не кликабельный */
+}
+
+.symbol {
+  position: absolute;
+  color: #888; /* Серый цвет крестиков и ноликов */
+  animation: floatAndRotate 10s linear infinite;
+  opacity: 0.7; /* Полупрозрачные */
+}
+
+@keyframes floatAndRotate {
+  0% {
+    transform: translateY(100vh) rotate(0deg); /* Начинаем снизу */
+    opacity: 0;
   }
-  to {
-    transform: rotate(360deg);
+  50% {
+    opacity: 1;
   }
-}
-
-@media (prefers-reduced-motion: no-preference) {
-  a:nth-of-type(2) .logo {
-    animation: logo-spin infinite 20s linear;
+  100% {
+    transform: translateY(-100px) rotate(360deg); /* Поднимаемся вверх с вращением */
+    opacity: 0;
   }
-}
-
-.card {
-  padding: 2em;
-}
-
-.read-the-docs {
-  color: #888;
 }

@@ -9,6 +9,7 @@ export default defineConfig({
       // Настраиваем алиасы
       '@': path.resolve(__dirname, './src'), // Корень проекта
       '@components': path.resolve(__dirname, './src/components'), // Папка с компонентами
+      '@context': path.resolve(__dirname, './src/context'), // Папка с компонентами
       '@styles': path.resolve(__dirname, './src/styles'), // Папка со стилями
       '@assets': path.resolve(__dirname, './src/assets'), // Папка с ассетами
     },
