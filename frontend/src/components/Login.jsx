@@ -15,13 +15,16 @@ const LoginPage = () => {
     e.preventDefault();
 
     try {
-      // Отправляем запрос на бэкенд
+      const formData = new URLSearchParams();
+      formData.append('username', username);
+      formData.append('password', password);
+
       const response = await fetch('http://localhost:8000/api/v1/auth/jwt/login', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
         },
-        body: JSON.stringify({ username: username, password: password, grant_type: 'password'}),
+        body: formData,
       });
 
       if (!response.ok) {
@@ -30,7 +33,7 @@ const LoginPage = () => {
       }
 
       const data = await response.json();
-      const token = data.token; // Предполагаем, что токен приходит в ответе
+      const token = data.access_token;
 
       // Сохраняем токен и перенаправляем на главную страницу
       login(token);

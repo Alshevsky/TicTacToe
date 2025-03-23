@@ -1,107 +1,126 @@
 /* src/components/LoginPage.css */
 .login-container {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    height: 100vh;
-    background-color: rgba(255, 255, 255, 0.9); /* Полупрозрачный белый фон */
-    border-radius: 16px;
-    padding: 20px;
-    box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
-    z-index: 1; /* Чтобы форма была поверх анимации */
-    position: relative;
-    width: 350px; /* Фиксированная ширина формы */
-    margin: 0 auto; /* Центрирование формы */
-  }
-  
-  .game-title {
-    font-size: 24px;
-    font-weight: bold;
-    color: #6a1b9a; /* Фиолетовый цвет */
-    margin-bottom: 10px;
-  }
-  
-  .login-title {
-    font-size: 20px;
-    font-weight: normal;
-    color: #333;
-    margin-bottom: 20px;
-  }
-  
-  .login-form {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 15px; /* Расстояние между элементами */
-  }
-  
-  .form-group {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-  }
-  
-  .form-group label {
-    color: #555;
-    font-size: 14px;
-  }
-  
-  .form-group input {
-    width: 95%;
-    padding: 10px;
-    border: 1px solid #ccc;
-    border-radius: 8px; /* Округлые углы */
-    font-size: 14px;
-    background-color: #f9f9f9;
-    outline: none;
-  }
-  
-  .form-group input:focus {
-    border-color: #6a1b9a; /* Фиолетовый цвет при фокусе */
-  }
-  
-  .btn-login,
-  .btn-register {
-    width: 100%;
-    padding: 10px;
-    border: none;
-    border-radius: 8px;
-    font-size: 16px;
-    cursor: pointer;
-    transition: background-color 0.3s ease;
-  }
-  
-  /* .btn-login {
-    background-color: #6a1b9a; /* Фиолетовый цвет */
-    /* color: white; */
-  /* } */
-  
-  /* .btn-login:hover {
-    background-color: #4a148c;
-  } */
-  
-  .btn-register .btn-login {
-    background-color: #f0e6f6; /* Светло-фиолетовый */
-    color: #6a1b9a;
-    border: 1px solid #6a1b9a;
-  }
-  
-  .btn-register:hover .btn-login:hover {
-    background-color: #e1d1f0; /* Светлее фиолетовый при наведении */
-  }
-  
-  .btn-forgot-password {
-    background: none;
-    border: none;
-    color: #6a1b9a;
-    font-size: 14px;
-    cursor: pointer;
-    text-decoration: underline;
-    padding: 0;
-    margin-top: 10px;
-  }
-  
-  .btn-forgot-password:hover {
-    color: #4a148c; /* Темнее фиолетовый при наведении */
-  }
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  background-color: rgba(255, 255, 255, 0.9);
+  /* Полупрозрачный белый фон */
+  border-radius: 16px;
+  padding: 20px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  z-index: 1;
+  /* Чтобы форма была поверх анимации */
+  position: relative;
+  width: 350px;
+  /* Фиксированная ширина формы */
+  margin: 0 auto;
+  /* Центрирование формы */
+}
+
+.game-title {
+  font-size: 24px;
+  font-weight: bold;
+  color: #6a1b9a;
+  /* Фиолетовый цвет */
+  margin-bottom: 10px;
+}
+
+.login-title {
+  font-size: 20px;
+  font-weight: normal;
+  color: #333;
+  margin-bottom: 20px;
+}
+
+.login-form {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+  /* Расстояние между элементами */
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.form-group label {
+  color: #555;
+  font-size: 14px;
+}
+
+.form-group input {
+  width: 95%;
+  padding: 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  /* Округлые углы */
+  font-size: 14px;
+  background-color: #f9f9f9;
+  outline: none;
+  color: #000;
+}
+
+.form-group input:focus {
+  border-color: #6a1b9a;
+  /* Фиолетовый цвет при фокусе */
+}
+
+.btn-login,
+.btn-register {
+  width: 100%;
+  padding: 10px;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.btn-register,
+.btn-login {
+  background-color: #f0e6f6;
+  /* Светло-фиолетовый */
+  color: #6a1b9a;
+  border: 1px solid #6a1b9a;
+}
+
+.btn-login:focus {
+  outline: none;
+  border: none;
+}
+
+.btn-login:active {
+  outline: none;
+  border: none;
+}
+
+.btn-forgot-password {
+  background: none;
+  border: none;
+  color: #6a1b9a;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: underline;
+  padding: 0;
+  margin-top: 10px;
+}
+
+.btn-forgot-password:hover {
+  color: #4a148c;
+  /* Темнее фиолетовый при наведении */
+}
+
+.btn-forgot-password:focus {
+  outline: none;
+  border: none;
+}
+
+.btn-forgot-password:active {
+  outline: none;
+  border: none;
+}

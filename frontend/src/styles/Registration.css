@@ -54,6 +54,7 @@
     font-size: 14px;
     background-color: #f9f9f9;
     outline: none;
+    color: #000;
   }
   
   .form-group input:focus {

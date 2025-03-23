@@ -30,3 +30,17 @@ async def get_async_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def get_user_db(session: AsyncSession = Depends(get_async_session)):
     yield SQLAlchemyUserDatabase(session, User)
+    
+
+def session_connection(method):
+    async def wrapper(*args, **kwargs):
+        async with Session.begin() as session:
+            try:
+                return await method(*args, session=session, **kwargs)
+            except Exception as e:
+                await session.rollback()
+                raise e
+            finally:
+                await session.close()
+
+    return wrapper

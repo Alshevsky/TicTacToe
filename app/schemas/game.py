@@ -1,18 +1,31 @@
 from uuid import uuid4
 
 from fastapi.websockets import WebSocket
+from pydantic import BaseModel
 
-from app.exceptions import GameIsNotCreated
 from app.helpers import GameItems
+from database.models import User
 
 from .player import Player
 
 
+class GameListRead(BaseModel):
+    gamesList: list
+    userName: str
+
+
+class GameCreate(BaseModel):
+    gameName: str
+    currentPlayerItem: GameItems
+
+
 class Game:
-    id: str = f"{uuid4()}"
+    id: str = ""
+    name: str = ""
     first_player: Player
     second_player: Player | None = None
-    is_active: bool = False  # Is the game currently active
+    is_active: bool = False
+    # Is the game currently active
     _player_turn: GameItems = GameItems.X
     _available_indexes: list[int] = [0, 1, 2, 3, 4, 5, 6, 7, 8]
     _win_patterns: list[list[int]] = [
@@ -26,32 +39,31 @@ class Game:
         [2, 4, 6],
     ]
 
-    def __init__(self, player: Player):
-        self.first_player = player
-        self.first_player.item = GameItems.X
+    def __init__(self, user: User, game_name: str, user_item: GameItems | None = GameItems.X):
         self._id = f"{uuid4()}"
+        self.name = game_name
+        
+        self._first_player_item = user_item
+        self._second_player_item = GameItems.O if user_item == GameItems.X else GameItems.X
+
+        player = Player(id=user.id, username=user.username, item=self._first_player_item)
+        self.first_player = player
+
         self.game_state = dict().fromkeys(self._available_indexes, "")
-        super().__init__()
-
+        self.players_state: dict[str, Player] = {user.id: player}
+    
     @classmethod
-    async def create(cls, player: Player) -> "Game":
-        if player is None or len(player.created_games) >= 1:
-            raise GameIsNotCreated("You already have a game created")
-        created_game = cls(player)
-        player.created_games.append(created_game.uid)
-        return created_game
+    def create(cls, user: User, game_data: GameCreate) -> "Game":
+        return cls(user, game_data.gameName, game_data.currentPlayerItem)
 
-    async def join_player(self, player: Player) -> bool:
-        if self.is_active or self.second_player or player is None or self.first_player == player:
+    async def join_player(self, user: User) -> bool:
+        if self.is_active or self.second_player or user is None or self.first_player.id == user.id:
             return False
-        item = GameItems.O if self.first_player.item == GameItems.X else GameItems.X
-        player.item = item
+        player = Player(id=user.id, username=user.username, item=self._first_player_item)
         self.second_player = player
+        self.players_state[user.id] = player
         self.is_active = True
         return True
-
-    async def close(self):
-        self.first_player.created_games.clear()
 
     async def get_users_ws(self) -> list[WebSocket]:
         users_ws = []
@@ -60,10 +72,9 @@ class Game:
         users_ws += [self.first_player.web_socket, self.second_player.web_socket]
         return users_ws
 
-    async def player_set_item(self, player: Player, cell_index: int) -> GameItems:
-        assert player in [self.first_player, self.second_player], (
-            "Данный пользователь не имеет права устанавливать " "значения"
-        )
+    async def player_set_item(self, user: User, cell_index: int) -> GameItems:
+        player = self.players_state.get(user.id)
+        assert player is None, "Данный пользователь не имеет права устанавливать значения"
         assert player.item == self._player_turn, "Ход разрешен другому игроку"
         assert cell_index in self._available_indexes, "Передано неверное значение ячейки"
         assert self.game_state[cell_index] == "", "Попытка поставить значение, в уже занятую ячейку"
@@ -84,9 +95,9 @@ class Game:
     def to_dict(self) -> dict:
         return {
             "id": self._id,
-            "isActive": self.is_active,
-            "currentPlayerName": self.first_player.name,
-            "secondPlayerName": self.second_player.name if self.second_player else None,
+            "gameName": self.name,
+            "currentPlayerName": self.first_player.username,
+            "secondPlayerName": self.second_player.username if self.second_player else None,
             "currentPlayerItem": self.first_player.item.value,
             "secondPlayerItem": self.second_player.item.value if self.second_player else None,
         }

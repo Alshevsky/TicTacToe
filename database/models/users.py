@@ -7,7 +7,6 @@ from database.models.base_model import Base
 
 class User(SQLAlchemyBaseUserTableUUID, Base):
     username: str = Column(String, nullable=False, unique=True, index=True)
-    statistic = relationship("UserStatistic", uselist=False, backref="parent")
 
     @classmethod
     def objects(session) -> SQLAlchemyUserDatabase:

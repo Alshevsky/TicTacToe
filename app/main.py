@@ -1,13 +1,13 @@
+import logging.config
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
+
 from app.api.routers import router
-from database import create_db_and_tables
+from app.auth.websocket_auth import JWTWebsocketAuth
 from app.settings import settings
-
-import logging.config
-
+from database import create_db_and_tables
 
 logger = logging.getLogger(__name__)
 
@@ -32,3 +32,17 @@ app.add_middleware(
 
 
 app.include_router(router=router)
+
+
+@app.websocket("/games/{game_id}/ws")
+async def websocket_game_endpoint(game_id: str, websocket: WebSocket):
+    await websocket.accept()
+    # game = local_game_cache["game_id"]
+    await websocket.send_json({"type": "auth"})
+    token_message = await websocket.receive_json()
+    print(token_message)
+    user = JWTWebsocketAuth.validate(token_message['token'])
+    print(user)
+    while True:
+        data = await websocket.receive_text()
+        await websocket.send_json({"chatMessage": data})

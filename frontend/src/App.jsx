@@ -3,9 +3,12 @@ import 'normalize.css'
 import LoginPage from '@components/Login';
 import RegistrationPage from '@components/Registration';
 import HomePage from '@components/Home';
+import GamePage from '@components/Game';
+import ProtectedRoute from '@components/ProtectedRoute';
 import React, { useContext } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthContext } from '@context/AuthContext';
+import { AuthProvider } from '@context/AuthContext';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 
@@ -34,23 +37,33 @@ function App() {
         })}
       </div>
 
+      <AuthProvider>
       <Router>
         <ToastContainer />
         <Routes>
-          <Route
-            path="/login"
-            element={token ? <Navigate to="/" /> : <LoginPage />}
-          />
-          <Route
-            path="/register"
-            element={token ? <Navigate to="/" /> : <RegistrationPage />}
-          />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<RegistrationPage />} />
           <Route
             path="/"
-            element={token ? <HomePage /> : <Navigate to="/login" />}
+            element={
+              <ProtectedRoute>
+                <HomePage />
+              </ProtectedRoute>
+            }
           />
+          <Route
+            path="/game/:id"
+            element={
+              <ProtectedRoute>
+                <GamePage />
+              </ProtectedRoute>
+            }
+          />
+
+          <Route path="*" element={<div>Страница не найдена</div>} />
         </Routes>
       </Router>
+    </AuthProvider>
     </div>
   );
 }

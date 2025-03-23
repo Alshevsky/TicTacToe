@@ -1,5 +1,6 @@
-from fastapi import WebSocket, WebSocketDisconnect, WebSocketException
-from app import cache
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, WebSocketException
+
+from app.cache.game_cache import local_game_cache
 from app.cache.ws_cache import WebSocketConnectionsCache
 
 

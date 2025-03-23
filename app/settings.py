@@ -31,7 +31,7 @@ class Settings:
 
     SECRET: str = os.getenv("SECRET_KEY", uuid4().hex)
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")
-    ACCESS_TOKEN_EXPIRE: int = os.getenv("ACCESS_TOKEN_EXPIRE", 3600)
+    ACCESS_TOKEN_EXPIRE: int = int(os.getenv("ACCESS_TOKEN_EXPIRE", 3600))
 
 
 settings = Settings()
