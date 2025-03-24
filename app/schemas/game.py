@@ -4,6 +4,7 @@ from fastapi.websockets import WebSocket
 from pydantic import BaseModel
 
 from app.helpers import GameItems
+from app.websockets.manager import WebsocketConnectionManager
 from database.models import User
 
 from .player import Player
@@ -40,9 +41,9 @@ class Game:
     ]
 
     def __init__(self, user: User, game_name: str, user_item: GameItems | None = GameItems.X):
-        self._id = f"{uuid4()}"
+        self.id = f"{uuid4()}"
         self.name = game_name
-        
+
         self._first_player_item = user_item
         self._second_player_item = GameItems.O if user_item == GameItems.X else GameItems.X
 
@@ -51,7 +52,9 @@ class Game:
 
         self.game_state = dict().fromkeys(self._available_indexes, "")
         self.players_state: dict[str, Player] = {user.id: player}
-    
+
+        self.websocket_manager = WebsocketConnectionManager()
+
     @classmethod
     def create(cls, user: User, game_data: GameCreate) -> "Game":
         return cls(user, game_data.gameName, game_data.currentPlayerItem)
@@ -64,13 +67,6 @@ class Game:
         self.players_state[user.id] = player
         self.is_active = True
         return True
-
-    async def get_users_ws(self) -> list[WebSocket]:
-        users_ws = []
-        if not self.first_player or not self.second_player:
-            return users_ws
-        users_ws += [self.first_player.web_socket, self.second_player.web_socket]
-        return users_ws
 
     async def player_set_item(self, user: User, cell_index: int) -> GameItems:
         player = self.players_state.get(user.id)
@@ -94,7 +90,7 @@ class Game:
 
     def to_dict(self) -> dict:
         return {
-            "id": self._id,
+            "id": self.id,
             "gameName": self.name,
             "currentPlayerName": self.first_player.username,
             "secondPlayerName": self.second_player.username if self.second_player else None,

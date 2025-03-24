@@ -6,6 +6,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import router
 from app.auth.websocket_auth import JWTWebsocketAuth
+from app.cache.game_cache import local_game_cache
 from app.settings import settings
 from database import create_db_and_tables
 
@@ -36,13 +37,18 @@ app.include_router(router=router)
 
 @app.websocket("/games/{game_id}/ws")
 async def websocket_game_endpoint(game_id: str, websocket: WebSocket):
+    game = local_game_cache[game_id]
     await websocket.accept()
-    # game = local_game_cache["game_id"]
     await websocket.send_json({"type": "auth"})
     token_message = await websocket.receive_json()
-    print(token_message)
-    user = JWTWebsocketAuth.validate(token_message['token'])
-    print(user)
+    user = await JWTWebsocketAuth.validate(token_message["token"])
+    websocket_manager = game.websocket_manager
+    await websocket_manager.add(user, websocket=websocket)
     while True:
-        data = await websocket.receive_text()
-        await websocket.send_json({"chatMessage": data})
+        data = await websocket.receive_json()
+        match data["type"]:
+            case "sendChatMessage":
+                data["type"] = "chatMessage"
+                await websocket_manager.broadcast_json(data)
+            case "makeMove":
+                pass

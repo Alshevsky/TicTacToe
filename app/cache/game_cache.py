@@ -15,6 +15,7 @@ class GamesListCache:
         self.user_mapping[item.first_player.id] = key
 
     def __getitem__(self, game_id: str) -> Game | None:
+        print(self.data)
         return self.data[game_id]
 
     def __delitem__(self, game_id: str):
@@ -25,13 +26,13 @@ class GamesListCache:
 
     def __iter__(self):
         return iter(self.data)
-    
+
     def close_game(self, uid: str) -> bool:
         if (game := self.data.pop(uid, None)) is None:
             return True
         self.user_mapping.pop(game.first_player.id)
         del game
-    
+
     def create_game(self, user: User, game_data: GameCreate) -> Game:
         if user is not None and self.get_by_user_id(user.id):
             raise GameIsNotCreated("You already have a game created")
@@ -40,7 +41,7 @@ class GamesListCache:
         game = Game.create(user, game_data)
         self.__setitem__(game.id, game)
         return game
-    
+
     def join_game(self, user: User):
         pass
 

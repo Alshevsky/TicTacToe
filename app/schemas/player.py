@@ -10,4 +10,3 @@ class Player:
     id: str
     username: str
     item: GameItems
-    ws: WebSocket | None = None

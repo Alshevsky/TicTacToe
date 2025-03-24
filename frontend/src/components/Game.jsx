@@ -91,7 +91,7 @@ const GamePage = () => {
     if (message.trim()) {
       const chatMessage = {
         type: 'sendChatMessage',
-        message,
+        message: message,
       };
       wsRef.current.send(JSON.stringify(chatMessage));
       setMessage('');

@@ -1,7 +1,9 @@
 from uuid import UUID
+
+from fastapi import WebSocket
+
 from app.helpers import is_valid_uuid
 from app.schemas import Game, UserRead
-from fastapi import WebSocket
 
 
 class WebSocketConnectionsCache:
@@ -9,8 +11,8 @@ class WebSocketConnectionsCache:
     error_message = "Incorrect data has been transmitted, it is necessary to transfer the instance of `%s` class"
 
     def __setitem__(self, key: Game | UserRead, item: WebSocket) -> None:
-        assert isinstance(key, (Game, UserRead)), (self.error_message % f"{Game.__name__} or {UserRead.__name__}")
-        assert isinstance(item, WebSocket), (self.error_message % WebSocket.__name__)
+        assert isinstance(key, (Game, UserRead)), self.error_message % f"{Game.__name__} or {UserRead.__name__}"
+        assert isinstance(item, WebSocket), self.error_message % WebSocket.__name__
         assert hasattr(key, "id"), "%s HAS NOT ID" % key.__name__
         assert is_valid_uuid(key.id), "Incorrect uid format"
         self.data[key.id] = item

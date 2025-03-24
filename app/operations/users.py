@@ -1,7 +1,7 @@
-from database.models import User
-from database.base import session_connection
-
 from sqlalchemy import select
+
+from database.base import session_connection
+from database.models import User
 
 
 @session_connection
