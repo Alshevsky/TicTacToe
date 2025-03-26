@@ -27,6 +27,6 @@ async def game_create(game_data: GameCreate, user: User = Depends(current_active
 @router.get("/games/{game_id}")
 async def game_join(user: User = Depends(current_active_user)):
     try:
-        local_game_cache.join_game(user)
+        await local_game_cache.join_game(user)
     except (GameIsNotCreated, ValueError) as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))

@@ -27,7 +27,7 @@ class Settings:
     REDIS_HOST: str = os.getenv("REDIS_HOST", "localhost")
     REDIS_PORT: str = os.getenv("REDIS_PORT", 6379)
     REDIS_URL = f"redis://{REDIS_HOST}:{REDIS_PORT}"
-    REDIS_LIFETIME_TOKEN: int = 3600  # in seconds
+    REDIS_CHANNEL: str = os.getenv("REDIS_CHANNEL", "game_cache")
 
     SECRET: str = os.getenv("SECRET_KEY", uuid4().hex)
     ALGORITHM: str = os.getenv("ALGORITHM", "HS256")

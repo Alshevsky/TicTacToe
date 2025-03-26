@@ -1,3 +1,5 @@
+from redis.asyncio import Redis
+
 from app.exceptions import GameIsNotCreated
 from app.helpers import is_valid_uuid
 from app.schemas import Game, GameCreate
@@ -15,7 +17,6 @@ class GamesListCache:
         self.user_mapping[item.first_player.id] = key
 
     def __getitem__(self, game_id: str) -> Game | None:
-        print(self.data)
         return self.data[game_id]
 
     def __delitem__(self, game_id: str):
@@ -26,6 +27,9 @@ class GamesListCache:
 
     def __iter__(self):
         return iter(self.data)
+    
+    def get(self, game_id: str) -> Game | None:
+        return self.data.get(game_id)
 
     def close_game(self, uid: str) -> bool:
         if (game := self.data.pop(uid, None)) is None:
@@ -42,8 +46,14 @@ class GamesListCache:
         self.__setitem__(game.id, game)
         return game
 
-    def join_game(self, user: User):
-        pass
+    async def join_game(self, user: User, game_id: str):
+        game = self.get(game_id)
+        if game is None:
+            raise GameIsNotCreated("Game not found")
+        if game.first_player.id == user.id:
+            raise GameIsNotCreated("You are the creator of the game")
+        game.join_player(user)
+        return game
 
     def get_by_user_id(self, uid: str) -> Game | None:
         return self.data.get(self.user_mapping.get(uid))

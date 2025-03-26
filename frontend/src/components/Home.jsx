@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '@context/AuthContext';
 import '@styles/Home.css';
@@ -12,6 +12,7 @@ const HomePage = () => {
   const [playerItem, setPlayerItem] = useState('X');
   const [error, setError] = useState('');
   const navigate = useNavigate();
+  const wsRef = useRef(null);
 
   useEffect(() => {
     const fetchGames = async () => {
@@ -40,6 +41,63 @@ const HomePage = () => {
     };
 
     fetchGames();
+  }, [token]);
+
+  useEffect(() => {
+    const connectWebSocket = () => {
+      const ws = new WebSocket('ws://localhost:8000/games/ws');
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        console.log('WebSocket connected');
+        ws.send(JSON.stringify({ token }));
+      };
+
+      ws.onmessage = (event) => {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'auth') {
+          return;
+        }
+
+        switch (data.type) {
+          case 'gameAdded':
+            setGames(prevGames => [...prevGames, data.game]);
+            break;
+          case 'gameRemoved':
+            setGames(prevGames => prevGames.filter(game => game.id !== data.gameId));
+            break;
+          case 'gameUpdated':
+            setGames(prevGames => 
+              prevGames.map(game => 
+                game.id === data.game.id ? data.game : game
+              )
+            );
+            break;
+          default:
+            console.warn('Unknown message type:', data.type);
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setError('Ошибка подключения к серверу');
+      };
+
+      ws.onclose = () => {
+        console.log('WebSocket disconnected');
+        // Попытка переподключения через 3 секунды
+        setTimeout(connectWebSocket, 3000);
+      };
+    };
+
+    connectWebSocket();
+
+    return () => {
+      if (wsRef.current) {
+        wsRef.current.close();
+      }
+    };
   }, [token]);
 
   const handleJoinGame = (gameId) => {

@@ -80,8 +80,7 @@ const GamePage = () => {
     // Отправляем ход на сервер
     const move = {
       type: 'makeMove',
-      index,
-      player: currentPlayer,
+      cellIndex: index,
     };
     wsRef.current.send(JSON.stringify(move));
   };

@@ -1,4 +1,4 @@
-from fastapi import WebSocket, WebSocketDisconnect, WebSocketException
+from fastapi import WebSocket, WebSocketDisconnect, WebSocketException, status
 
 from database.models import User
 
@@ -8,6 +8,10 @@ class WebsocketConnectionManager:
         self.active_connections: dict[str, WebSocket] = {}
 
     async def add(self, user: User, websocket: WebSocket):
+        if user.id in self.active_connections:
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="User already connected")
+        if len(self.active_connections) >= 2:
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="Too many connections")
         self.active_connections[user.id] = websocket
 
     async def disconnect(self, uid: str):
