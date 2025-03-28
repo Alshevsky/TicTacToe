@@ -5,6 +5,7 @@ from fastapi import Depends, Request
 from fastapi_users import BaseUserManager, FastAPIUsers, UUIDIDMixin
 
 from app.settings import settings
+from app.operations.statistic import create_statistic
 from database import get_user_db
 from database.models import User
 
@@ -17,6 +18,7 @@ class UserManager(UUIDIDMixin, BaseUserManager[User, uuid.UUID]):
 
     async def on_after_register(self, user: User, request: Optional[Request] = None):
         print(f"User {user.id} has registered.")
+        await create_statistic(user.id)
 
     async def on_after_forgot_password(self, user: User, token: str, request: Optional[Request] = None):
         print(f"User {user.id} has forgot their password. Reset token: {token}")

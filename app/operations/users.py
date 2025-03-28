@@ -9,4 +9,5 @@ async def get_user_by_id(uid: str, session) -> User | None:
     stmt = select(User).where(User.id == uid)
     result = await session.execute(stmt)
     user = result.scalar_one_or_none()
+    print(user)
     return user

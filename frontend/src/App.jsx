@@ -11,6 +11,7 @@ import { AuthContext } from '@context/AuthContext';
 import { AuthProvider } from '@context/AuthContext';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import { WebSocketProvider } from '@context/WebSocketContext';
 
 function App() {
   const { token } = useContext(AuthContext);
@@ -38,32 +39,36 @@ function App() {
       </div>
 
       <AuthProvider>
-      <Router>
-        <ToastContainer />
-        <Routes>
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegistrationPage />} />
-          <Route
-            path="/"
-            element={
-              <ProtectedRoute>
-                <HomePage />
-              </ProtectedRoute>
-            }
-          />
-          <Route
-            path="/game/:id"
-            element={
-              <ProtectedRoute>
-                <GamePage />
-              </ProtectedRoute>
-            }
-          />
+        <Router>
+          <ToastContainer />
+          <Routes>
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/register" element={<RegistrationPage />} />
+            <Route
+              path="/"
+              element={
+                <ProtectedRoute>
+                  <WebSocketProvider>
+                    <HomePage />
+                  </WebSocketProvider>
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/game/:id"
+              element={
+                <ProtectedRoute>
+                  <WebSocketProvider>
+                    <GamePage />
+                  </WebSocketProvider>
+                </ProtectedRoute>
+              }
+            />
 
-          <Route path="*" element={<div>Страница не найдена</div>} />
-        </Routes>
-      </Router>
-    </AuthProvider>
+            <Route path="*" element={<div>Страница не найдена</div>} />
+          </Routes>
+        </Router>
+      </AuthProvider>
     </div>
   );
 }

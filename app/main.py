@@ -2,20 +2,22 @@ import logging.config
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routers import router
 from app.auth.websocket_auth import JWTWebsocketAuth
-from app.cache.game_cache import local_game_cache
-from app.schemas.game import Game
+from app.cache.game_cache import game_cache_manager
 from app.settings import settings
 from database import create_db_and_tables
+from app.cache.redis import RedisManager
 
 logger = logging.getLogger(__name__)
 
 logger.info("Starting FastAPI")
 logger.info("VERSION - %s", settings.PROJECT_VERSION)
+
+redis_manager = RedisManager()
 
 
 @asynccontextmanager
@@ -37,13 +39,38 @@ app.add_middleware(
 app.include_router(router=router)
 
 
-@app.get("/ws")
+@app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
-    await websocket.send_json({"type": "auth"})
-    while True:
-        data = await websocket.receive_json()
-        print(data)
+    try:
+        await websocket.send_json({"type": "auth"})
+        token_message = await websocket.receive_json()
+        # await JWTWebsocketAuth.validate(token_message["token"])
+        
+        # Подписываемся на канал
+        await redis_manager.subscribe_to_channel(settings.REDIS_CHANNEL)
+        
+        while True:
+            # Проверяем сообщения из Redis
+            if message := await redis_manager.get_message():
+                await websocket.send_json(message)
+            
+            # Проверяем сообщения от клиента
+            try:
+                data = await websocket.receive_json()
+                print(data)
+            except WebSocketDisconnect:
+                break
+                
+    except WebSocketException as e:
+        logger.error(f"WebSocket exception: {e}")
+    except WebSocketDisconnect:
+        logger.debug("WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"Error: {e}")
+    finally:
+        await redis_manager.unsubscribe_from_channel("games_channel")
+        await websocket.close()
 
 
 @app.websocket("/games/{game_id}/ws")
@@ -59,7 +86,7 @@ async def websocket_game_endpoint(game_id: str, websocket: WebSocket) -> None:
         WebSocketDisconnect: При разрыве соединения
         ConnectionClosed: При закрытии соединения
     """
-    if (game := local_game_cache.get(game_id)) is None:
+    if (game := game_cache_manager.get(game_id)) is None:
         await websocket.send_json({"type": "Error", "message": "Game not found"})
         await websocket.close()
         return
@@ -90,7 +117,7 @@ async def websocket_game_endpoint(game_id: str, websocket: WebSocket) -> None:
                         data["gameState"] = game_state.to_dict()
                         await websocket_manager.broadcast_json(data)
                     case "closeGame":
-                        local_game_cache.close_game(game_id)
+                        game_cache_manager.close_game(game_id)
                         await websocket.close()
                         break
                     case _:
@@ -100,7 +127,7 @@ async def websocket_game_endpoint(game_id: str, websocket: WebSocket) -> None:
                 logger.info(f"WebSocket disconnected for user {user}")
                 await websocket_manager.remove(user)
                 if not websocket_manager.active_connections:
-                    local_game_cache.close_game(game_id)
+                    game_cache_manager.close_game(game_id)
                 break
                 
     except Exception as e:

@@ -1,6 +1,4 @@
-from dataclasses import dataclass, asdict
-
-from fastapi.websockets import WebSocket
+from dataclasses import dataclass
 
 from app.helpers import GameItems
 
@@ -12,10 +10,19 @@ class Player:
     item: GameItems
     
     def dump(self) -> dict:
-        return asdict(self)
+        return {
+            "id": f"{self.id}",
+            "username": self.username,
+            "item": self.item.value
+        }
     
     def to_dict(self) -> dict:
         return self.dump()
 
-    def load(self, data: dict) -> "Player":
-        return Player(**data)
+    @classmethod
+    def load(cls, data: dict) -> "Player":
+        return cls(
+            id=data["id"],
+            username=data["username"],
+            item=GameItems(data["item"])
+        )

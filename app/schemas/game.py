@@ -7,11 +7,21 @@ from app.helpers import GameItems
 from app.websockets.manager import WebsocketConnectionManager
 from database.models import User
 
-from .player import Player
+from app.schemas.player import Player
+
+
+class GameRead(BaseModel):
+    id: str
+    gameName: str
+    currentPlayerName: str | None = None
+    secondPlayerName: str | None = None
+    currentPlayerItem: str | None = None
+    secondPlayerItem: str | None = None
+    isActive: bool = False
 
 
 class GameListRead(BaseModel):
-    gamesList: list
+    gamesList: list[GameRead]
     userName: str
 
 
@@ -25,6 +35,12 @@ class GameState(BaseModel):
     finished: bool = False
 
 
+class GameJoin(BaseModel):
+    gameId: str
+    currentPlayerItem: GameItems
+    joined: bool = False
+
+
 class Game:
     slots = (
         "id", "name", "first_player", "second_player", 
@@ -35,7 +51,7 @@ class Game:
     
     id: str = ""
     name: str = ""
-    first_player: Player
+    first_player: Player | None = None
     second_player: Player | None = None
     is_active: bool = False
     # Is the game currently active
@@ -52,18 +68,20 @@ class Game:
         [2, 4, 6],
     ]
 
-    def __init__(self, user: User, game_name: str, user_item: GameItems | None = GameItems.X):
+    def __init__(self, user: User | None = None, game_name: str | None = None, user_item: GameItems | None = GameItems.X):
         self.id = f"{uuid4()}"
         self.name = game_name
+
+        self.is_active = True
 
         self._first_player_item = user_item
         self._second_player_item = GameItems.O if user_item == GameItems.X else GameItems.X
 
-        player = Player(id=user.id, username=user.username, item=self._first_player_item)
+        player = Player(id=user.id, username=user.username, item=self._first_player_item) if user else None
         self.first_player = player
 
         self.game_state = dict().fromkeys(self._available_indexes, "")
-        self.players_state: dict[str, Player] = {user.id: player}
+        self.players_state: dict[str, Player] = {user.id: player} if user else {}
 
         self.websocket_manager = WebsocketConnectionManager()
 
@@ -74,7 +92,7 @@ class Game:
     async def join_player(self, user: User) -> bool:
         if self.is_active or self.second_player or user is None or self.first_player.id == user.id:
             raise GameIsNotCreated("Game is not active or user is already in the game")
-        player = Player(id=user.id, username=user.username, item=self._first_player_item)
+        player = Player(id=f"{user.id}", username=user.username, item=self._first_player_item)
         self.second_player = player
         self.players_state[user.id] = player
         self.is_active = True
@@ -113,32 +131,52 @@ class Game:
     
     def dump(self) -> dict:
         return {
-            "id": self.id,
+            "id": f"{self.id}",
             "name": self.name,
             "first_player": self.first_player.dump(),
             "second_player": self.second_player.dump() if self.second_player else None,
-            "first_player_item": self._first_player_item,
+            "first_player_item": self._first_player_item.value,
             "is_active": self.is_active,
         }
     
+    def dump_model(self) -> GameRead:
+        return GameRead(
+            id=self.id,
+            gameName=self.name,
+            currentPlayerName=self.first_player.username,
+            secondPlayerName=self.second_player.username if self.second_player else None,
+            currentPlayerItem=self.first_player.item.value,
+            secondPlayerItem=self.second_player.item.value if self.second_player else None,
+            isActive=self.is_active,
+        )
+    
     @classmethod
     def load(cls, data: dict) -> "Game":
-        return cls(
-            id=data["id"],
-            name=data["name"],
-            first_player=Player.load(data["first_player"]),
-            second_player=Player.load(data["second_player"]) if data["second_player"] else None,
-            _first_player_item=data["first_player_item"],
-            _second_player_item=GameItems.O if data["first_player_item"] == GameItems.X else GameItems.X,
-            is_active=data["is_active"],
-        )
+        game = cls()
+        game.id = data["id"]
+        game.name = data["name"]
+        game._first_player_item = GameItems(data["first_player_item"])
+        game._second_player_item = GameItems.O if data["first_player_item"] == GameItems.X else GameItems.X
+        game.is_active = data["is_active"]
 
-    def to_dict(self) -> dict:
-        return {
-            "id": self.id,
-            "gameName": self.name,
-            "currentPlayerName": self.first_player.username,
-            "secondPlayerName": self.second_player.username if self.second_player else None,
-            "currentPlayerItem": self.first_player.item.value,
-            "secondPlayerItem": self.second_player.item.value if self.second_player else None,
-        }
+        first_player = Player.load(data["first_player"])
+        second_player = Player.load(data["second_player"]) if data["second_player"] else None
+
+        game.first_player = first_player
+        game.second_player = second_player
+        game.players_state = {player.id: player for player in (first_player, second_player) if player}
+        return game
+
+    @classmethod
+    def to_read(cls, data: dict) -> GameRead:
+        first_player = Player.load(data["first_player"])
+        second_player = Player.load(data["second_player"]) if data["second_player"] else None
+        return GameRead(
+            id=data["id"],
+            gameName=data["name"],
+            currentPlayerName=first_player.username,
+            secondPlayerName=second_player.username if second_player else None,
+            currentPlayerItem=first_player.item.value,
+            secondPlayerItem=second_player.item.value if second_player else None,
+            isActive=data["is_active"],
+        )

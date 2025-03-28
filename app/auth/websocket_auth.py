@@ -1,4 +1,4 @@
-from fastapi import HTTPException, status
+from fastapi import status, WebSocketException
 from fastapi.security import HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 
@@ -21,10 +21,10 @@ class JWTWebsocketAuth:
         scheme, _, param = token.partition(" ")
         credentials = HTTPAuthorizationCredentials(scheme=scheme, credentials=param)
         if credentials.scheme != "Bearer":
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid authentication scheme.")
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid authentication scheme.")
 
         if decoded_jwt := await cls.decode_jwt(credentials.credentials):
             user = await get_user_by_id(decoded_jwt["sub"])
             return user
         else:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid authorization code.")
+            raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason="Invalid authorization code.")

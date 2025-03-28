@@ -1,18 +1,21 @@
-import React, { useState, useEffect, useContext, useRef } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '@context/AuthContext';
+import { useWebSocket } from '@context/WebSocketContext';
 import '@styles/Home.css';
 
 const HomePage = () => {
   const { token, logout } = useContext(AuthContext);
+  const { sendMessage } = useWebSocket();
   const [userName, setUserName] = useState('');
   const [games, setGames] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isWaitingModalOpen, setIsWaitingModalOpen] = useState(false);
+  const [waitingGameId, setWaitingGameId] = useState(null);
   const [gameName, setGameName] = useState('');
   const [playerItem, setPlayerItem] = useState('X');
   const [error, setError] = useState('');
   const navigate = useNavigate();
-  const wsRef = useRef(null);
 
   useEffect(() => {
     const fetchGames = async () => {
@@ -44,64 +47,63 @@ const HomePage = () => {
   }, [token]);
 
   useEffect(() => {
-    const connectWebSocket = () => {
-      const ws = new WebSocket('ws://localhost:8000/games/ws');
-      wsRef.current = ws;
+    const handleWebSocketMessage = (event) => {
+      const data = JSON.parse(event.data);
+      
+      if (data.type === 'auth') {
+        sendMessage({
+          type: 'auth',
+          token: `Bearer ${token}`,
+        });
+        return;
+      }
 
-      ws.onopen = () => {
-        console.log('WebSocket connected');
-        ws.send(JSON.stringify({ token }));
-      };
-
-      ws.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-        
-        if (data.type === 'auth') {
-          return;
-        }
-
-        switch (data.type) {
-          case 'gameAdded':
-            setGames(prevGames => [...prevGames, data.game]);
-            break;
-          case 'gameRemoved':
-            setGames(prevGames => prevGames.filter(game => game.id !== data.gameId));
-            break;
-          case 'gameUpdated':
-            setGames(prevGames => 
-              prevGames.map(game => 
-                game.id === data.game.id ? data.game : game
-              )
-            );
-            break;
-          default:
-            console.warn('Unknown message type:', data.type);
-        }
-      };
-
-      ws.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        setError('Ошибка подключения к серверу');
-      };
-
-      ws.onclose = () => {
-        console.log('WebSocket disconnected');
-        // Попытка переподключения через 3 секунды
-        setTimeout(connectWebSocket, 3000);
-      };
-    };
-
-    connectWebSocket();
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
+      switch (data.type) {
+        case 'gameAdded':
+          setGames(prevGames => [...prevGames, data.game]);
+          break;
+        case 'gameRemoved':
+          setGames(prevGames => prevGames.filter(game => game.id !== data.gameId));
+          break;
+        case 'gameUpdated':
+          setGames(prevGames => 
+            prevGames.map(game => 
+              game.id === data.game.id ? data.game : game
+            )
+          );
+          break;
+        case 'GameIsAccepted':
+          if (data.gameId === waitingGameId) {
+            setIsWaitingModalOpen(false);
+            navigate(`/game/${data.gameId}`);
+          }
+          break;
+        case 'GameIsAborted':
+          if (data.gameId === waitingGameId) {
+            setIsWaitingModalOpen(false);
+            setError('Создатель игры отклонил ваше приглашение');
+          }
+          break;
+        default:
+          console.warn('Unknown message type:', data.type);
       }
     };
-  }, [token]);
+
+    const ws = new WebSocket('ws://localhost:8000/ws');
+    ws.onmessage = handleWebSocketMessage;
+    
+    return () => {
+      ws.close();
+    };
+  }, [waitingGameId, navigate]);
 
   const handleJoinGame = (gameId) => {
-    navigate(`/game/${gameId}`);
+    setWaitingGameId(gameId);
+    setIsWaitingModalOpen(true);
+    sendMessage({
+      type: 'joinGame',
+      gameId: gameId
+    });
   };
 
   const handleCreateGame = async () => {
@@ -117,16 +119,14 @@ const HomePage = () => {
           currentPlayerItem: playerItem,
         }),
       });
-      console.log(response.ok)
+
       if (!response.ok) {
         throw new Error('Ошибка создания игры');
       }
 
       const data = await response.json();
-      setGames((prevGames) =>
-        prevGames.push(data)
-      )
-      setIsModalOpen(false)
+      setGames(prevGames => [...prevGames, data]);
+      setIsModalOpen(false);
     } catch (err) {
       setError('Не удалось создать игру');
     }
@@ -189,6 +189,16 @@ const HomePage = () => {
             </select>
             <button onClick={handleCreateGame}>Создать</button>
             <button onClick={() => setIsModalOpen(false)}>Отмена</button>
+          </div>
+        </div>
+      )}
+
+      {isWaitingModalOpen && (
+        <div className="modal">
+          <div className="modal-content">
+            <div className="loading-spinner"></div>
+            <h2>Ожидание ответа</h2>
+            <p>Ожидаем принятие приглашения игроком...</p>
           </div>
         </div>
       )}

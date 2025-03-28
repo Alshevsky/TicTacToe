@@ -1,72 +1,84 @@
+import logging
+import orjson
 from redis.asyncio import Redis
+from sqlalchemy import delete
 
 from app.exceptions import GameIsNotCreated
 from app.helpers import is_valid_uuid
 from app.schemas import Game, GameCreate
+from app.schemas.game import GameRead
 from database.models import User
+from app.cache.redis import RedisCache, RedisManager
+from app.settings import settings
+from app.websockets.helper import WebsocketMessageType
+logger = logging.getLogger(__name__)
 
 
-class GamesListCache:
-    data: dict[str, Game] = {}
-    user_mapping: dict[str, str] = {}
+class GamesCacheManager:
     error_message = "Incorrect data has been transmitted, it is necessary to transfer the instance of `Game` class"
-
-    def __setitem__(self, key, item: Game) -> None:
-        assert isinstance(item, Game), self.error_message
-        self.data[key] = item
-        self.user_mapping[item.first_player.id] = key
-
-    def __getitem__(self, game_id: str) -> Game | None:
-        return self.data[game_id]
-
-    def __delitem__(self, game_id: str):
-        del self.data[game_id]
-
-    def __contains__(self, game_id: str) -> bool:
-        return game_id in self.data
-
-    def __iter__(self):
-        return iter(self.data)
+    _redis_cache = RedisCache()
+    _redis_manager = RedisManager()
     
-    def get(self, game_id: str) -> Game | None:
-        return self.data.get(game_id)
+    def __init__(self):
+        self._user_has_game = set()
+    
+    async def get(self, game_id: str) -> Game | None:
+        try:
+            return await self._redis_cache.get(game_id)
+        except Exception as e:
+            logger.error("Failed to get game: %s", e, exc_info=True)
+            return None
 
-    def close_game(self, uid: str) -> bool:
-        if (game := self.data.pop(uid, None)) is None:
+    async def close_game(self, uid: str) -> bool:
+        try:
+            game: Game | None = await self._redis_cache.get(uid)
+            if game is None:
+                return False
+            await self._redis_cache.delete(uid)
+            self._user_has_game.remove(game.first_player.id)
             return True
-        self.user_mapping.pop(game.first_player.id)
-        del game
+        except Exception as e:
+            logger.error("Failed to close game: %s", e, exc_info=True)
+            return False
 
-    def create_game(self, user: User, game_data: GameCreate) -> Game:
-        if user is not None and self.get_by_user_id(user.id):
-            raise GameIsNotCreated("You already have a game created")
-        elif user is None:
-            raise ValueError("Player is None")
-        game = Game.create(user, game_data)
-        self.__setitem__(game.id, game)
-        return game
+    async def create_game(self, user: User, game_data: GameCreate) -> Game:
+        try:
+            if user is not None and user.id in self._user_has_game:
+                raise GameIsNotCreated("You already have a game created")
+            game = Game.create(user, game_data)
+            await self._redis_cache.set(game.id, game)
+            self._user_has_game.add(user.id)
+            await self._redis_manager.publish_to_channel(
+                channel=settings.REDIS_CHANNEL, 
+                message=orjson.dumps({"type": WebsocketMessageType.GAME_ADDED, "game": game.dump()})
+            )
+            return game
+        except Exception as e:
+            logger.error("Failed to create game: %s", e, exc_info=True)
+            raise GameIsNotCreated("Failed to create game")
 
     async def join_game(self, user: User, game_id: str):
-        game = self.get(game_id)
-        if game is None:
-            raise GameIsNotCreated("Game not found")
-        if game.first_player.id == user.id:
-            raise GameIsNotCreated("You are the creator of the game")
-        game.join_player(user)
-        return game
+        try:
+            game: Game | None = await self._redis_cache.get(game_id)
+            if game is None or not game.is_active:
+                raise GameIsNotCreated("Game not found")
+            if game.first_player.id == user.id:
+                raise GameIsNotCreated("You are the creator of the game")
+            await game.join_player(user)
+            await self._redis_cache.set(game_id, game)
+            await self._redis_manager.publish_to_channel(
+                channel=settings.REDIS_CHANNEL, 
+                message=orjson.dumps({"type": WebsocketMessageType.GAME_JOINED, "gameId": game.model_dump()})
+            )
+            return game.second_player.item
+        except GameIsNotCreated as e:
+            raise e
+        except Exception as e:
+            logger.error("Failed to join game: %s", e, exc_info=True)
+            raise GameIsNotCreated("Failed to join game")
 
-    def get_by_user_id(self, uid: str) -> Game | None:
-        return self.data.get(self.user_mapping.get(uid))
-
-    def pop(self, game_id: str, default=None) -> Game | None:
-        return self.data.pop(game_id, default)
-
-    def get_games_info_data(self) -> list[dict]:
-        print(self.data.values())
-        return [game.to_dict() for game in self.data.values() if not game.is_active]
-
-    def game_is_waiting_players_count(self) -> int:
-        return len([game for game in self.data.values() if not game.is_active])
+    async def get_games_info_data(self) -> list[GameRead]:
+        return await self._redis_cache.get_active_games()
 
 
-local_game_cache = GamesListCache()
+game_cache_manager = GamesCacheManager()
