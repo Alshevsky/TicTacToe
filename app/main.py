@@ -1,3 +1,4 @@
+import asyncio
 import logging.config
 from contextlib import asynccontextmanager
 from typing import Any
@@ -11,13 +12,13 @@ from app.cache.game_cache import game_cache_manager
 from app.settings import settings
 from database import create_db_and_tables
 from app.cache.redis import RedisManager
+from database.models.users import User
+from app.websockets.helper import WebsocketMessageType
 
 logger = logging.getLogger(__name__)
 
 logger.info("Starting FastAPI")
 logger.info("VERSION - %s", settings.PROJECT_VERSION)
-
-redis_manager = RedisManager()
 
 
 @asynccontextmanager
@@ -39,28 +40,56 @@ app.add_middleware(
 app.include_router(router=router)
 
 
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket) -> None:
-    await websocket.accept()
+async def auth_user(websocket: WebSocket) -> None | User:
     try:
         await websocket.send_json({"type": "auth"})
         token_message = await websocket.receive_json()
-        # await JWTWebsocketAuth.validate(token_message["token"])
-        
+        user = await JWTWebsocketAuth.validate(token_message["token"])
+        return user
+    except WebSocketException as e:
+        logger.error(f"WebSocket exception: {e}")
+        return None
+
+
+@app.websocket("/ws")
+async def websocket_endpoint(websocket: WebSocket) -> None:
+    await websocket.accept()
+    redis_manager = RedisManager()
+    try:
+        user = await auth_user(websocket)
         # Подписываемся на канал
         await redis_manager.subscribe_to_channel(settings.REDIS_CHANNEL)
         
         while True:
             # Проверяем сообщения из Redis
-            if message := await redis_manager.get_message():
-                await websocket.send_json(message)
+            data: dict[str, Any] = await websocket.receive_json()
+            if isinstance(data, dict) and "type" in data:
+                match data["type"]:
+                    case WebsocketMessageType.GAME_INVITE:
+                        if user is None:
+                            if (user := await auth_user(websocket)) is None:
+                                await websocket.close()
+                                return
+                        if user.username != data["targetPlayer"]:
+                            continue
+                        await websocket.send_json(data)
+                    case WebsocketMessageType.GAME_JOINED:
+                        data["type"] = WebsocketMessageType.GAME_INVITE
+                        await redis_manager.publish_message(settings.REDIS_CHANNEL, data)
+                        await websocket.send_json(data)
+                    case WebsocketMessageType.GAME_ENDED:
+                        await websocket.send_json(data)
+                    case WebsocketMessageType.GAME_WIN:
+                        await websocket.send_json(data)
+                        
+                    case _:
+                        logger.warning(f"Unknown message type received: {data['type']}")
+            if not (message := await redis_manager.get_message()):
+                await asyncio.sleep(0.1)
+                continue
             
-            # Проверяем сообщения от клиента
-            try:
-                data = await websocket.receive_json()
-                print(data)
-            except WebSocketDisconnect:
-                break
+            await websocket.send_json(message)
+            
                 
     except WebSocketException as e:
         logger.error(f"WebSocket exception: {e}")
@@ -69,7 +98,7 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     except Exception as e:
         logger.error(f"Error: {e}")
     finally:
-        await redis_manager.unsubscribe_from_channel("games_channel")
+        await redis_manager.unsubscribe_from_channel(settings.REDIS_CHANNEL)
         await websocket.close()
 
 

@@ -29,13 +29,17 @@ class GamesCacheManager:
             logger.error("Failed to get game: %s", e, exc_info=True)
             return None
 
-    async def close_game(self, uid: str) -> bool:
+    async def close_game(self, uid: str, user_id: str) -> bool:
         try:
             game: Game | None = await self._redis_cache.get(uid)
-            if game is None:
+            if game is None or game.first_player.id != user_id:
                 return False
             await self._redis_cache.delete(uid)
             self._user_has_game.remove(game.first_player.id)
+            await self._redis_manager.publish_to_channel(
+                channel=settings.REDIS_CHANNEL, 
+                message=orjson.dumps({"type": WebsocketMessageType.GAME_DELETED, "gameId": uid})
+            )
             return True
         except Exception as e:
             logger.error("Failed to close game: %s", e, exc_info=True)
@@ -50,7 +54,7 @@ class GamesCacheManager:
             self._user_has_game.add(user.id)
             await self._redis_manager.publish_to_channel(
                 channel=settings.REDIS_CHANNEL, 
-                message=orjson.dumps({"type": WebsocketMessageType.GAME_ADDED, "game": game.dump()})
+                message=orjson.dumps({"type": WebsocketMessageType.GAME_ADDED, "game": game.dump_model_json()})
             )
             return game
         except Exception as e:

@@ -6,16 +6,16 @@ import '@styles/Home.css';
 
 const HomePage = () => {
   const { token, logout } = useContext(AuthContext);
-  const { sendMessage } = useWebSocket();
-  const [userName, setUserName] = useState('');
+  const navigate = useNavigate();
+  const { ws, closeConnection, sendMessage } = useWebSocket();
   const [games, setGames] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [gameName, setGameName] = useState('');
+  const [playerItem, setPlayerItem] = useState('❌');
+  const [currentPlayerName, setCurrentPlayerName] = useState('');
+  const [error, setError] = useState('');
   const [isWaitingModalOpen, setIsWaitingModalOpen] = useState(false);
   const [waitingGameId, setWaitingGameId] = useState(null);
-  const [gameName, setGameName] = useState('');
-  const [playerItem, setPlayerItem] = useState('X');
-  const [error, setError] = useState('');
-  const navigate = useNavigate();
 
   useEffect(() => {
     const fetchGames = async () => {
@@ -27,19 +27,21 @@ const HomePage = () => {
         });
 
         if (!response.ok) {
-          throw new Error('Ошибка загрузки списка игр');
+          throw new Error('Ошибка загрузки игр');
         }
 
         const data = await response.json();
         if (Array.isArray(data.gamesList)) {
           setGames(data.gamesList);
+          setCurrentPlayerName(data.userName);
         } else {
-          console.error('Ожидался массив, но получен:', data);
+          console.error('Ожидался массив игр, но получен:', data);
           setGames([]);
         }
-        setUserName(data.userName)
       } catch (err) {
-        setError('Не удалось загрузить список игр');
+        console.error('Ошибка загрузки игр:', err);
+        setError('Не удалось загрузить игры');
+        setGames([]);
       }
     };
 
@@ -47,22 +49,16 @@ const HomePage = () => {
   }, [token]);
 
   useEffect(() => {
+    if (!ws) return;
+
     const handleWebSocketMessage = (event) => {
       const data = JSON.parse(event.data);
       
-      if (data.type === 'auth') {
-        sendMessage({
-          type: 'auth',
-          token: `Bearer ${token}`,
-        });
-        return;
-      }
-
       switch (data.type) {
         case 'gameAdded':
           setGames(prevGames => [...prevGames, data.game]);
           break;
-        case 'gameRemoved':
+        case 'gameDeleted':
           setGames(prevGames => prevGames.filter(game => game.id !== data.gameId));
           break;
         case 'gameUpdated':
@@ -73,38 +69,36 @@ const HomePage = () => {
           );
           break;
         case 'GameIsAccepted':
-          if (data.gameId === waitingGameId) {
+          if (waitingGameId === data.gameId) {
             setIsWaitingModalOpen(false);
             navigate(`/game/${data.gameId}`);
           }
           break;
         case 'GameIsAborted':
-          if (data.gameId === waitingGameId) {
+          if (waitingGameId === data.gameId) {
             setIsWaitingModalOpen(false);
-            setError('Создатель игры отклонил ваше приглашение');
+            setError('Игра была отклонена');
           }
           break;
+        case "auth":
+          sendMessage({
+            type: "auth",
+            token: `Bearer ${token}`,
+          });
+          break;
         default:
-          console.warn('Unknown message type:', data.type);
+          console.log('Неизвестный тип сообщения:', data.type);
       }
     };
 
-    const ws = new WebSocket('ws://localhost:8000/ws');
     ws.onmessage = handleWebSocketMessage;
     
     return () => {
-      ws.close();
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.close(1000, "Component unmounting");
+      }
     };
-  }, [waitingGameId, navigate]);
-
-  const handleJoinGame = (gameId) => {
-    setWaitingGameId(gameId);
-    setIsWaitingModalOpen(true);
-    sendMessage({
-      type: 'joinGame',
-      gameId: gameId
-    });
-  };
+  }, [ws, waitingGameId, navigate]);
 
   const handleCreateGame = async () => {
     try {
@@ -121,15 +115,61 @@ const HomePage = () => {
       });
 
       if (!response.ok) {
-        throw new Error('Ошибка создания игры');
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Ошибка создания игры');
       }
 
       const data = await response.json();
       setGames(prevGames => [...prevGames, data]);
       setIsModalOpen(false);
     } catch (err) {
-      setError('Не удалось создать игру');
+      setError(err.message || 'Не удалось создать игру');
     }
+  };
+
+  const handleJoinGame = async (game) => {
+    try {
+      setWaitingGameId(game.id);
+      setIsWaitingModalOpen(true);
+
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        sendMessage(JSON.stringify({
+          type: 'joinGame',
+          gameId: game.id,
+          targetPlayer: game.currentPlayerName,
+        }));
+      } else {
+        throw new Error('WebSocket соединение не установлено');
+      }
+    } catch (err) {
+      setError('Не удалось присоединиться к игре');
+      setIsWaitingModalOpen(false);
+      setWaitingGameId(null);
+    }
+  };
+
+  const handleEndGame = async (gameId) => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/games/${gameId}/end`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Не удалось завершить игру');
+      }
+
+      setGames(prevGames => prevGames.filter(game => game.id !== gameId));
+    } catch (err) {
+      setError(err.message || 'Не удалось завершить игру');
+    }
+  };
+
+  const handleProfileClick = () => {
+    navigate('/profile');
   };
 
   return (
@@ -137,58 +177,82 @@ const HomePage = () => {
       <header className="header">
         <div className="logo">Tic-Tac-Toe Online</div>
         <div className="header-buttons">
-          <button className="btn-profile">Профиль</button>
+          <button className="btn-profile" onClick={handleProfileClick}>Профиль</button>
           <button className="btn-logout" onClick={logout}>
             Выйти
           </button>
         </div>
       </header>
 
-      <h1 className="welcome-message">Добро пожаловать, {userName}!</h1>
+      <div className="content">
+        <div className="games-section">
+          <h2>Доступные игры</h2>
+          <button className="btn-create-game" onClick={() => setIsModalOpen(true)}>
+            Создать игру
+          </button>
 
-      <div className="games-list">
-        {games.length > 0 ? (
-          games.map((game) => (
-            <div key={game.id} className="game-item">
-              <span>{game.gameName}</span>
-              <button
-                className={game.currentPlayerName == userName ? 'btn-join-disabled' : 'btn-join'}
-                onClick={() => handleJoinGame(game.id)}
-                disabled={game.currentPlayerName == userName}
-              >
-                Подключиться
-              </button>
-            </div>
-          ))
-        ) : (
-          <p>Нет доступных игр</p>
-        )}
+          <div className="games-list">
+            {games.map((game) => (
+              <div key={game.id} className="game-item">
+                <span className="game-name">{game.gameName}</span>
+                <span className="game-creator">
+                  Создатель: {game.currentPlayerName || 'Неизвестно'}
+                </span>
+                <div className="game-buttons">
+                  {game.currentPlayerName === currentPlayerName ? (
+                    <button
+                      className="btn-end-game"
+                      onClick={() => handleEndGame(game.id)}
+                    >
+                      Завершить игру
+                    </button>
+                  ) : (
+                    <button
+                      className={`btn-join ${!game.isActive ? 'btn-join-disabled' : ''}`}
+                      onClick={() => handleJoinGame(game)}
+                      disabled={!game.isActive}
+                    >
+                      {!game.isActive ? 'В игре' : 'Присоединиться'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
-
-      <button className="btn-create-game" onClick={() => setIsModalOpen(true)}>
-        Создать игру
-      </button>
 
       {isModalOpen && (
         <div className="modal">
           <div className="modal-content">
-            <h2>Создать игру</h2>
+            <h2>Создание новой игры</h2>
             <input
               type="text"
               placeholder="Название игры"
               value={gameName}
               onChange={(e) => setGameName(e.target.value)}
             />
-            <span>Выберите вашу фигуру</span>
-            <select
-              value={playerItem}
-              onChange={(e) => setPlayerItem(e.target.value)}
-            >
-              <option value="X">X</option>
-              <option value="O">O</option>
-            </select>
-            <button onClick={handleCreateGame}>Создать</button>
-            <button onClick={() => setIsModalOpen(false)}>Отмена</button>
+            <div className="player-item-select">
+              <label>Выберите символ:</label>
+              <div className="player-item-options">
+                <button
+                  className={`player-item-btn ${playerItem === 'X' ? 'active' : ''}`}
+                  onClick={() => setPlayerItem('X')}
+                >
+                  ❌
+                </button>
+                <button
+                  className={`player-item-btn ${playerItem === 'O' ? 'active' : ''}`}
+                  onClick={() => setPlayerItem('O')}
+                >
+                  ⭕
+                </button>
+              </div>
+            </div>
+            <div className="modal-buttons">
+              <button onClick={handleCreateGame}>Создать</button>
+              <button onClick={() => setIsModalOpen(false)}>Отмена</button>
+            </div>
           </div>
         </div>
       )}
@@ -197,7 +261,6 @@ const HomePage = () => {
         <div className="modal">
           <div className="modal-content">
             <div className="loading-spinner"></div>
-            <h2>Ожидание ответа</h2>
             <p>Ожидаем принятие приглашения игроком...</p>
           </div>
         </div>

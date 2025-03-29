@@ -4,39 +4,48 @@ import LoginPage from '@components/Login';
 import RegistrationPage from '@components/Registration';
 import HomePage from '@components/Home';
 import GamePage from '@components/Game';
-import ProtectedRoute from '@components/ProtectedRoute';
-import React, { useContext } from 'react';
+import ProfilePage from '@components/Profile';
+import ProtectedLayout from '@components/ProtectedLayout';
+import React, { useMemo } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
-import { AuthContext } from '@context/AuthContext';
 import { AuthProvider } from '@context/AuthContext';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
-import { WebSocketProvider } from '@context/WebSocketContext';
+
+function BackgroundAnimation() {
+  const symbols = useMemo(() => 
+    [...Array(30)].map(() => ({
+      left: Math.random() * 100,
+      delay: Math.random() * 5,
+      size: Math.floor(Math.random() * 24) + 16,
+      symbol: Math.random() > 0.5 ? '❌' : '⭕'
+    })), 
+    []
+  );
+
+  return (
+    <div className="background-animation">
+      {symbols.map(({ left, delay, size, symbol }, index) => (
+        <div
+          key={index}
+          className="symbol"
+          style={{
+            left: `${left}%`,
+            animationDelay: `${delay}s`,
+            fontSize: `${size}px`,
+          }}
+        >
+          {symbol}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function App() {
-  const { token } = useContext(AuthContext);
   return (
     <div className="app-container">
-      <div className="background-animation">
-        {[...Array(30)].map((_, index) => {
-          const randomLeft = Math.random() * 100; // Случайное положение по горизонтали
-          const randomDelay = Math.random() * 5; // Случайная задержка анимации
-          const randomSize = Math.floor(Math.random() * 24) + 16; // Случайный размер (от 16px до 40px)
-          return (
-            <div
-              key={index}
-              className="symbol"
-              style={{
-                left: `${randomLeft}%`,
-                animationDelay: `${randomDelay}s`,
-                fontSize: `${randomSize}px`,
-              }}
-            >
-              {Math.random() > 0.5 ? '❌' : '⭕'}
-            </div>
-          );
-        })}
-      </div>
+      <BackgroundAnimation />
 
       <AuthProvider>
         <Router>
@@ -44,24 +53,31 @@ function App() {
           <Routes>
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegistrationPage />} />
+            
             <Route
               path="/"
               element={
-                <ProtectedRoute>
-                  <WebSocketProvider>
-                    <HomePage />
-                  </WebSocketProvider>
-                </ProtectedRoute>
+                <ProtectedLayout useWebSocket={true}>
+                  <HomePage />
+                </ProtectedLayout>
               }
             />
+            
             <Route
               path="/game/:id"
               element={
-                <ProtectedRoute>
-                  <WebSocketProvider>
-                    <GamePage />
-                  </WebSocketProvider>
-                </ProtectedRoute>
+                <ProtectedLayout useWebSocket={true}>
+                  <GamePage />
+                </ProtectedLayout>
+              }
+            />
+            
+            <Route
+              path="/profile"
+              element={
+                <ProtectedLayout useWebSocket={false}>
+                  <ProfilePage />
+                </ProtectedLayout>
               }
             />
 

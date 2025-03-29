@@ -1,4 +1,5 @@
 from uuid import uuid4
+import orjson
 
 from pydantic import BaseModel
 
@@ -150,6 +151,9 @@ class Game:
             isActive=self.is_active,
         )
     
+    def dump_model_json(self) -> str:
+        return orjson.dumps(self.dump_model().model_dump()).decode("utf-8")
+
     @classmethod
     def load(cls, data: dict) -> "Game":
         game = cls()

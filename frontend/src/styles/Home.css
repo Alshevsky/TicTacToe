@@ -95,11 +95,16 @@
 
 .btn-join-disabled {
     padding: 6px 12px;
-    background-color: #5b5c5b;
+    background-color: #cccccc;
     color: white;
     border: none;
     border-radius: 4px;
-    cursor: pointer;
+    cursor: not-allowed;
+    opacity: 0.7;
+}
+
+.btn-join-disabled:hover {
+    background-color: #cccccc;
 }
 
 .btn-create-game {
@@ -184,4 +189,23 @@
 .modal-content p {
     color: #666;
     margin-bottom: 20px;
+}
+
+.game-buttons {
+    display: flex;
+    gap: 10px;
+}
+
+.btn-end-game {
+    padding: 6px 12px;
+    background-color: #dc3545;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background-color 0.2s;
+}
+
+.btn-end-game:hover {
+    background-color: #c82333;
 }

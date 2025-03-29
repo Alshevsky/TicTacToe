@@ -1,5 +1,5 @@
 import logging
-from typing import AsyncGenerator
+from typing import AsyncGenerator, Coroutine
 
 from fastapi import Depends
 from fastapi_users.db import SQLAlchemyUserDatabase
@@ -32,7 +32,7 @@ async def get_user_db(session: AsyncSession = Depends(get_async_session)):
     yield SQLAlchemyUserDatabase(session, User)
     
 
-def session_connection(method):
+def session_connection(method: Coroutine):
     async def wrapper(*args, **kwargs):
         async with Session.begin() as session:
             try:

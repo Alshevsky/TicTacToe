@@ -10,3 +10,4 @@ class WebsocketMessageType(Enum):
     GAME_STARTED = "gameStarted"
     GAME_ENDED = "gameEnded"
     GAME_WIN = "gameWin"
+    GAME_INVITE = "gameInvite"

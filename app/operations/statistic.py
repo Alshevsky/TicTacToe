@@ -1,31 +1,40 @@
 from sqlalchemy import select, update, insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import Statistic
+from database.models import UserStatistic
 from database.base import session_connection
+from app.schemas import UserStatisticRead
 
 
 @session_connection
-async def get_statistic(user_id: str, session: AsyncSession) -> Statistic:
-    stmt = select(Statistic).where(Statistic.user_id == user_id)
-    return await session.execute(stmt)
+async def get_statistic(user_id: str, session: AsyncSession) -> UserStatisticRead:
+    stmt = select(UserStatistic).where(UserStatistic.user_id == user_id)
+    result = await session.execute(stmt)
+    statistic = result.scalar_one_or_none()
+    if statistic is None:
+        await create_statistic(user_id, session)
+        return await get_statistic(user_id, session)
+    return UserStatisticRead(statistic)
 
 
 @session_connection
-async def update_statistic(user_id: str, session: AsyncSession, winner: bool = False, looses: bool = False) -> Statistic:
-    stmt = update(Statistic).where(Statistic.user_id == user_id).values(
-        total_games=Statistic.total_games + 1,
-        wins=Statistic.wins + 1 if winner else 1,
-        losses=Statistic.losses + 1 if Statistic.losses else 1,
+async def update_statistic(user_id: str, session: AsyncSession, winner: bool = False, looses: bool = False) -> None:
+    stmt = update(UserStatistic).where(UserStatistic.user_id == user_id).values(
+        games_total=UserStatistic.games_total + 1,
+        games_win=UserStatistic.games_win + 1 if winner else UserStatistic.games_win,
+        games_loose=UserStatistic.games_loose + 1 if looses else UserStatistic.games_loose,
     )
-    return await session.execute(stmt)
+    await session.execute(stmt)
+    await session.commit()
+
 
 @session_connection
-async def create_statistic(user_id: str, session: AsyncSession) -> Statistic:
-    stmt = insert(Statistic).values(
+async def create_statistic(user_id: str, session: AsyncSession) -> None:
+    stmt = insert(UserStatistic).values(
         user_id=user_id,
-        total_games=0,
-        wins=0,
-        losses=0,
+        games_total=0,
+        games_win=0,
+        games_loose=0,
     )
-    return await session.execute(stmt)
+    await session.execute(stmt)
+    await session.commit()
