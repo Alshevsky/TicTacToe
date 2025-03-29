@@ -7,7 +7,7 @@ import '@styles/Home.css';
 const HomePage = () => {
   const { token, logout } = useContext(AuthContext);
   const navigate = useNavigate();
-  const { ws, closeConnection, sendMessage } = useWebSocket();
+  const { ws, sendMessage } = useWebSocket();
   const [games, setGames] = useState([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [gameName, setGameName] = useState('');
@@ -52,42 +52,51 @@ const HomePage = () => {
     if (!ws) return;
 
     const handleWebSocketMessage = (event) => {
-      const data = JSON.parse(event.data);
-      
-      switch (data.type) {
-        case 'gameAdded':
-          setGames(prevGames => [...prevGames, data.game]);
-          break;
-        case 'gameDeleted':
-          setGames(prevGames => prevGames.filter(game => game.id !== data.gameId));
-          break;
-        case 'gameUpdated':
-          setGames(prevGames => 
-            prevGames.map(game => 
-              game.id === data.game.id ? data.game : game
-            )
-          );
-          break;
-        case 'GameIsAccepted':
-          if (waitingGameId === data.gameId) {
-            setIsWaitingModalOpen(false);
-            navigate(`/game/${data.gameId}`);
-          }
-          break;
-        case 'GameIsAborted':
-          if (waitingGameId === data.gameId) {
-            setIsWaitingModalOpen(false);
-            setError('Игра была отклонена');
-          }
-          break;
-        case "auth":
-          sendMessage({
-            type: "auth",
-            token: `Bearer ${token}`,
-          });
-          break;
-        default:
-          console.log('Неизвестный тип сообщения:', data.type);
+      try {
+        const data = JSON.parse(event.data);
+        console.log('Получено сообщение в Home:', data);
+        
+        switch (data.type) {
+          case 'gameAdded':
+            setGames(prevGames => [...prevGames, data.game]);
+            break;
+          case 'gameDeleted':
+            setGames(prevGames => prevGames.filter(game => game.id !== data.gameId));
+            break;
+          case 'gameUpdated':
+            setGames(prevGames => 
+              prevGames.map(game => 
+                game.id === data.game.id ? data.game : game
+              )
+            );
+            break;
+          case 'GameIsAccepted':
+            if (waitingGameId === data.gameId) {
+              setIsWaitingModalOpen(false);
+              navigate(`/game/${data.gameId}`);
+            }
+            break;
+          case 'GameIsAborted':
+            if (waitingGameId === data.gameId) {
+              setIsWaitingModalOpen(false);
+              setError('Игра была отклонена');
+            }
+            break;
+          case 'gameInvite':
+            console.log('Получено приглашение в игру:', data);
+            // Здесь не нужно обрабатывать приглашение, так как это делает WebSocketContext
+            break;
+          case 'auth':
+            sendMessage({
+              type: 'auth',
+              token: `Bearer ${token}`,
+            });
+            break;
+          default:
+            console.log('Неизвестный тип сообщения:', data.type);
+        }
+      } catch (error) {
+        console.error('Ошибка обработки сообщения:', error);
       }
     };
 
@@ -98,7 +107,7 @@ const HomePage = () => {
         ws.close(1000, "Component unmounting");
       }
     };
-  }, [ws, waitingGameId, navigate]);
+  }, [ws, waitingGameId, navigate, token, sendMessage]);
 
   const handleCreateGame = async () => {
     try {
@@ -132,15 +141,12 @@ const HomePage = () => {
       setWaitingGameId(game.id);
       setIsWaitingModalOpen(true);
 
-      if (ws && ws.readyState === WebSocket.OPEN) {
-        sendMessage(JSON.stringify({
-          type: 'joinGame',
-          gameId: game.id,
-          targetPlayer: game.currentPlayerName,
-        }));
-      } else {
-        throw new Error('WebSocket соединение не установлено');
-      }
+      sendMessage({
+        type: 'gameInvite',
+        gameId: game.id,
+        targetPlayer: game.currentPlayerName,
+        senderPlayer: currentPlayerName,
+      });
     } catch (err) {
       setError('Не удалось присоединиться к игре');
       setIsWaitingModalOpen(false);
@@ -150,39 +156,34 @@ const HomePage = () => {
 
   const handleEndGame = async (gameId) => {
     try {
-      const response = await fetch(`http://localhost:8000/api/v1/games/${gameId}/end`, {
-        method: 'PUT',
+      const response = await fetch(`http://localhost:8000/api/v1/games/${gameId}`, {
+        method: 'DELETE',
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || 'Не удалось завершить игру');
+        throw new Error('Ошибка завершения игры');
       }
 
       setGames(prevGames => prevGames.filter(game => game.id !== gameId));
     } catch (err) {
-      setError(err.message || 'Не удалось завершить игру');
+      setError('Не удалось завершить игру');
     }
   };
 
-  const handleProfileClick = () => {
-    navigate('/profile');
-  };
-
   return (
-    <div className="home-container">
-      <header className="header">
-        <div className="logo">Tic-Tac-Toe Online</div>
-        <div className="header-buttons">
-          <button className="btn-profile" onClick={handleProfileClick}>Профиль</button>
-          <button className="btn-logout" onClick={logout}>
+    <div className="home-page">
+      <div className="header">
+        <h1>Крестики-нолики</h1>
+        <div className="user-info">
+          <span>Игрок: {currentPlayerName}</span>
+          <button onClick={logout} className="btn-logout">
             Выйти
           </button>
         </div>
-      </header>
+      </div>
 
       <div className="content">
         <div className="games-section">

@@ -1,10 +1,9 @@
 import orjson
-
 from redis.asyncio import Redis
 from redis.exceptions import RedisError
 
-from app.settings import settings
 from app.schemas.game import Game, GameRead
+from app.settings import settings
 
 redis = Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, decode_responses=True)
 
@@ -36,7 +35,7 @@ class RedisManager:
         if not self.pubsub:
             return None
         message = await self.pubsub.get_message(ignore_subscribe_messages=True)
-        return message["data"] if message else None
+        return orjson.loads(message["data"]) if message else None
 
 
 class RedisCache:

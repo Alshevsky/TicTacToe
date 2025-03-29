@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi_users.db import SQLAlchemyBaseUserTableUUID, SQLAlchemyUserDatabase
 from sqlalchemy import Column, ForeignKey, Index, Integer, String, Uuid
 from sqlalchemy.orm import relationship
@@ -14,6 +16,7 @@ class User(SQLAlchemyBaseUserTableUUID, Base):
 
 
 class UserStatistic(Base):
+    id = Column(Uuid, primary_key=True, default=uuid.uuid4, index=True)
     user_id = Column(Uuid, ForeignKey(User.id, ondelete="CASCADE"))
     user = relationship(User, uselist=False)
 

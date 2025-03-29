@@ -1,9 +1,9 @@
-from sqlalchemy import select, update, insert
+from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from database.models import UserStatistic
-from database.base import session_connection
 from app.schemas import UserStatisticRead
+from database.base import session_connection
+from database.models import UserStatistic
 
 
 @session_connection
@@ -14,7 +14,7 @@ async def get_statistic(user_id: str, session: AsyncSession) -> UserStatisticRea
     if statistic is None:
         await create_statistic(user_id, session)
         return await get_statistic(user_id, session)
-    return UserStatisticRead(statistic)
+    return UserStatisticRead.model_validate(statistic)
 
 
 @session_connection

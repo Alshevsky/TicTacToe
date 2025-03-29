@@ -1,105 +1,100 @@
-import React, { useState, useEffect, useRef, useContext } from 'react';
+import React, { useState, useEffect, useContext } from 'react';
 import { useParams } from 'react-router-dom';
 import { AuthContext } from '@context/AuthContext';
+import { useWebSocket } from '@context/WebSocketContext';
 import '@styles/Game.css';
 
 const GamePage = () => {
   const { token } = useContext(AuthContext);
-  const { id } = useParams(); // Получаем ID игры из URL
-  const [board, setBoard] = useState(Array(9).fill(null)); // Состояние поля 3x3
-  const [currentPlayer, setCurrentPlayer] = useState(null); // Текущий игрок (X или O)
-  const [chatMessages, setChatMessages] = useState([]); // Сообщения чата
-  const [message, setMessage] = useState(''); // Текущее сообщение
-  const wsRef = useRef(null); // Ссылка на WebSocket
+  const { id } = useParams();
+  const { sendMessage, registerGameHandler, unregisterGameHandler } = useWebSocket();
+  const [board, setBoard] = useState(Array(9).fill(null));
+  const [currentPlayer, setCurrentPlayer] = useState(null);
+  const [chatMessages, setChatMessages] = useState([]);
+  const [message, setMessage] = useState('');
+  const [error, setError] = useState('');
 
-  // Подключение к WebSocket
   useEffect(() => {
     const fetchGame = async () => {
       try {
-        const response = await fetch(`http://localhost:8000/api/v1/games/${id}`);
+        const response = await fetch(`http://localhost:8000/api/v1/games/${id}`, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
 
         if (!response.ok) {
           throw new Error('Ошибка загрузки игры');
         }
 
         const data = await response.json();
-        if (Array.isArray(data.gamesList)) {
-          setGames(data.gamesList);
-        } else {
-          console.error('Ожидался массив, но получен:', data);
-          setGames([]);
+        if (data.gameState) {
+          setBoard(data.gameState.board);
+          setCurrentPlayer(data.gameState.currentPlayer);
         }
-        setUserName(data.userName)
       } catch (err) {
-        setError('Не удалось загрузить список игр');
+        setError('Не удалось загрузить игру');
       }
     };
 
-
-    // Создаем WebSocket-подключение
-    wsRef.current = new WebSocket(`ws://localhost:8000/games/${id}/ws`);
-
-    // Обработка открытия соединения
-    wsRef.current.onopen = () => {
-      console.log('WebSocket подключен');
-    };
-
-    // Обработка входящих сообщений
-    wsRef.current.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-
-      if (data.type === 'gameState') {
-        // Обновляем состояние игры
-        setBoard(data.board);
-        setCurrentPlayer(data.currentPlayer);
-      } else if (data.type === 'chatMessage') {
-        // Добавляем сообщение в чат
-        setChatMessages((prevMessages) => [...prevMessages, data.message]);
-      } else if (data.type === 'auth') {
-        wsRef.current.send(JSON.stringify({token: `Bearer ${token}`}));
+    // Регистрируем обработчик для этой игры
+    registerGameHandler(id, {
+      handleGameState: (gameState) => {
+        setBoard(gameState.board);
+        setCurrentPlayer(gameState.currentPlayer);
+      },
+      handleChatMessage: (message) => {
+        setChatMessages(prev => [...prev, message]);
       }
-    };
+    });
 
-    // Обработка закрытия соединения
-    wsRef.current.onclose = () => {
-      console.log('WebSocket отключен');
-    };
+    fetchGame();
 
     // Очистка при размонтировании
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
+      unregisterGameHandler(id);
     };
-  }, [id]);
+  }, [id, token, registerGameHandler, unregisterGameHandler]);
 
   // Обработка хода игрока
   const handleCellClick = (index) => {
-    if (board[index] || !currentPlayer) return; // Если клетка занята или не наш ход, ничего не делаем
+    if (board[index] || !currentPlayer) return;
 
-    // Отправляем ход на сервер
-    const move = {
-      type: 'makeMove',
-      cellIndex: index,
-    };
-    wsRef.current.send(JSON.stringify(move));
+    try {
+      const move = {
+        type: 'makeMove',
+        gameId: id,
+        cellIndex: index,
+      };
+      sendMessage(move);
+    } catch (err) {
+      console.error('Ошибка отправки хода:', err);
+      setError('Не удалось сделать ход');
+    }
   };
 
   // Отправка сообщения в чат
-  const sendMessage = () => {
-    if (message.trim()) {
+  const handleSendMessage = () => {
+    if (!message.trim()) return;
+
+    try {
       const chatMessage = {
         type: 'sendChatMessage',
+        gameId: id,
         message: message,
       };
-      wsRef.current.send(JSON.stringify(chatMessage));
+      sendMessage(chatMessage);
       setMessage('');
+    } catch (err) {
+      console.error('Ошибка отправки сообщения:', err);
+      setError('Не удалось отправить сообщение');
     }
   };
 
   return (
     <div className="game-page">
       <h1>Игра #{id}</h1>
+      {error && <div className="error-message">{error}</div>}
 
       {/* Поле для игры */}
       <div className="board">
@@ -129,8 +124,9 @@ const GamePage = () => {
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Введите сообщение..."
+            onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
           />
-          <button onClick={sendMessage}>Отправить</button>
+          <button onClick={handleSendMessage}>Отправить</button>
         </div>
       </div>
     </div>

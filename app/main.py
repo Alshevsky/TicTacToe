@@ -3,17 +3,21 @@ import logging.config
 from contextlib import asynccontextmanager
 from typing import Any
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException
+import orjson
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, WebSocketException, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.websockets import WebSocketState
 
 from app.api.routers import router
 from app.auth.websocket_auth import JWTWebsocketAuth
 from app.cache.game_cache import game_cache_manager
-from app.settings import settings
-from database import create_db_and_tables
 from app.cache.redis import RedisManager
-from database.models.users import User
+from app.operations.statistic import get_statistic
+from app.operations.users import get_user_and_statistic_by_username
+from app.settings import settings
 from app.websockets.helper import WebsocketMessageType
+from database import create_db_and_tables
+from database.models.users import User
 
 logger = logging.getLogger(__name__)
 
@@ -61,45 +65,110 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
         await redis_manager.subscribe_to_channel(settings.REDIS_CHANNEL)
         
         while True:
-            # Проверяем сообщения из Redis
-            data: dict[str, Any] = await websocket.receive_json()
-            if isinstance(data, dict) and "type" in data:
-                match data["type"]:
-                    case WebsocketMessageType.GAME_INVITE:
-                        if user is None:
-                            if (user := await auth_user(websocket)) is None:
-                                await websocket.close()
-                                return
-                        if user.username != data["targetPlayer"]:
+            try:
+                # Создаем задачи для параллельной обработки сообщений
+                websocket_task = asyncio.create_task(websocket.receive_json())
+                redis_task = asyncio.create_task(redis_manager.get_message())
+                
+                # Ждем первое завершившееся событие
+                done, pending = await asyncio.wait(
+                    [websocket_task, redis_task],
+                    return_when=asyncio.FIRST_COMPLETED
+                )
+                
+                # Отменяем оставшиеся задачи
+                for task in pending:
+                    task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
+                
+                # Обрабатываем результат
+                for task in done:
+                    try:
+                        result = task.result()
+                        if result is None:
                             continue
-                        await websocket.send_json(data)
-                    case WebsocketMessageType.GAME_JOINED:
-                        data["type"] = WebsocketMessageType.GAME_INVITE
-                        await redis_manager.publish_message(settings.REDIS_CHANNEL, data)
-                        await websocket.send_json(data)
-                    case WebsocketMessageType.GAME_ENDED:
-                        await websocket.send_json(data)
-                    case WebsocketMessageType.GAME_WIN:
-                        await websocket.send_json(data)
+                            
+                        if isinstance(result, dict) and "type" in result:
+                            # Определяем источник сообщения по задаче
+                            if task == websocket_task:
+                                await handle_websocket_message(result, user, redis_manager, websocket)
+                            else:
+                                await handle_redis_message(result, user, websocket)
+                    except WebSocketDisconnect:
+                        raise
+                    except asyncio.CancelledError:
+                        logger.info("Task cancelled")
+                        continue
+                    except Exception as e:
+                        logger.error(f"Error processing message: {e}")
                         
-                    case _:
-                        logger.warning(f"Unknown message type received: {data['type']}")
-            if not (message := await redis_manager.get_message()):
-                await asyncio.sleep(0.1)
-                continue
-            
-            await websocket.send_json(message)
-            
+            except WebSocketDisconnect:
+                logger.info("WebSocket disconnected normally")
+                break
+            except Exception as e:
+                print(e)
+                logger.error(f"Error in message processing loop: {e}")
+                break
                 
     except WebSocketException as e:
+        print(e)
         logger.error(f"WebSocket exception: {e}")
-    except WebSocketDisconnect:
+    except WebSocketDisconnect as e:
+        print(e)
         logger.debug("WebSocket disconnected")
     except Exception as e:
         logger.error(f"Error: {e}")
     finally:
-        await redis_manager.unsubscribe_from_channel(settings.REDIS_CHANNEL)
-        await websocket.close()
+        try:
+            await redis_manager.unsubscribe_from_channel(settings.REDIS_CHANNEL)
+            if websocket.state != WebSocketState.DISCONNECTED:
+                await websocket.close()
+        except Exception as e:
+            logger.error(f"Error in cleanup: {e}")
+
+
+async def handle_websocket_message(data: dict, user: User | None, redis_manager: RedisManager, websocket: WebSocket) -> None:
+    try:
+        match data["type"]:
+            case WebsocketMessageType.GAME_INVITE:
+                if user is None:
+                    if (user := await auth_user(websocket)) is None:
+                        # await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+                        return
+                statistic = await get_statistic(user.id)
+                data["stats"] = statistic.model_dump()
+                await redis_manager.publish_to_channel(settings.REDIS_CHANNEL, orjson.dumps(data))
+            case WebsocketMessageType.GAME_JOINED:
+                await websocket.send_json(data)
+            case WebsocketMessageType.GAME_ENDED:
+                await websocket.send_json(data)
+            case WebsocketMessageType.GAME_WIN:
+                await websocket.send_json(data)
+            case _:
+                logger.warning(f"Unknown WebSocket message type received: {data['type']}")
+    except Exception as e:
+        logger.error(f"Error handling WebSocket message: {e}")
+
+
+async def handle_redis_message(data: dict, user: User | None, websocket: WebSocket) -> None:
+    try:
+        match data["type"]:
+            case WebsocketMessageType.GAME_INVITE:
+                if user is None:
+                    logger.warning("Received Redis message for unauthenticated user")
+                    return
+                if user.username != data.get("targetPlayer"):
+                    return
+                await websocket.send_json(data)
+            case _:
+                logger.warning(f"Unknown Redis message type received: {data['type']}")
+    except Exception as e:
+        logger.error(f"Error handling Redis message: {e}")
+        # if websocket.state != WebSocketState.DISCONNECTED:
+        #     await websocket.close()
 
 
 @app.websocket("/games/{game_id}/ws")
