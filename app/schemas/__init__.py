@@ -1,4 +1,4 @@
-from .game import Game, GameCreate, GameListRead, GameJoin
+from .game import Game, GameCreate, GameJoin, GameListRead
 from .player import Player
-from .user import UserCreate, UserRead, UserUpdate
 from .statistic import UserStatisticRead
+from .user import UserCreate, UserRead, UserUpdate

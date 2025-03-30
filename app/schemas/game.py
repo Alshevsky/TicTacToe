@@ -1,14 +1,13 @@
 from uuid import uuid4
-import orjson
 
+import orjson
 from pydantic import BaseModel
 
 from app.exceptions import GameIsNotCreated
 from app.helpers import GameItems
+from app.schemas.player import Player
 from app.websockets.manager import WebsocketConnectionManager
 from database.models import User
-
-from app.schemas.player import Player
 
 
 class GameRead(BaseModel):
@@ -44,12 +43,21 @@ class GameJoin(BaseModel):
 
 class Game:
     slots = (
-        "id", "name", "first_player", "second_player", 
-        "is_active", "_player_turn", "_available_indexes", 
-        "_win_patterns", "_first_player_item", "_second_player_item",
-        "game_state", "players_state", "websocket_manager"
+        "id",
+        "name",
+        "first_player",
+        "second_player",
+        "is_active",
+        "_player_turn",
+        "_available_indexes",
+        "_win_patterns",
+        "_first_player_item",
+        "_second_player_item",
+        "game_state",
+        "players_state",
+        "websocket_manager",
     )
-    
+
     id: str = ""
     name: str = ""
     first_player: Player | None = None
@@ -69,7 +77,9 @@ class Game:
         [2, 4, 6],
     ]
 
-    def __init__(self, user: User | None = None, game_name: str | None = None, user_item: GameItems | None = GameItems.X):
+    def __init__(
+        self, user: User | None = None, game_name: str | None = None, user_item: GameItems | None = GameItems.X
+    ):
         self.id = f"{uuid4()}"
         self.name = game_name
 
@@ -129,7 +139,7 @@ class Game:
 
         self._player_turn = GameItems.O if self._player_turn == GameItems.X else GameItems.X
         return GameState(winner=winner, finished=finished)
-    
+
     def dump(self) -> dict:
         return {
             "id": f"{self.id}",
@@ -139,7 +149,7 @@ class Game:
             "first_player_item": self._first_player_item.value,
             "is_active": self.is_active,
         }
-    
+
     def dump_model(self) -> GameRead:
         return GameRead(
             id=self.id,
@@ -150,7 +160,7 @@ class Game:
             secondPlayerItem=self.second_player.item.value if self.second_player else None,
             isActive=self.is_active,
         )
-    
+
     def dump_model_json(self) -> str:
         return orjson.dumps(self.dump_model().model_dump()).decode("utf-8")
 

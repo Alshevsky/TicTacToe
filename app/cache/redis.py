@@ -7,6 +7,7 @@ from app.settings import settings
 
 redis = Redis(host=settings.REDIS_HOST, port=settings.REDIS_PORT, decode_responses=True)
 
+
 class RedisManager:
     def __init__(self):
         self.redis = redis
@@ -41,7 +42,7 @@ class RedisManager:
 class RedisCache:
     def __init__(self) -> None:
         self.redis = redis
-    
+
     async def set(self, game_id: str, game: Game) -> None:
         try:
             await self.redis.set(game_id, orjson.dumps(game.dump()).decode("utf-8"), ex=60 * 60 * 24)
@@ -65,6 +66,10 @@ class RedisCache:
     async def get_active_games(self) -> list[GameRead]:
         try:
             keys = await self.redis.keys("*")
-            return [game for data in await self.redis.mget(keys) if (game := Game.to_read(orjson.loads(data))) and game.isActive]
+            return [
+                game
+                for data in await self.redis.mget(keys)
+                if (game := Game.to_read(orjson.loads(data))) and game.isActive
+            ]
         except (RedisError, ValueError) as e:
             raise ValueError(f"Failed to get all games from Redis: {e}")

@@ -2,6 +2,8 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '@context/AuthContext';
 import '@styles/Profile.css';
+import Header from '@components/Header';
+
 
 const ProfilePage = () => {
   const { token, logout } = useContext(AuthContext);
@@ -83,15 +85,7 @@ const ProfilePage = () => {
 
   return (
     <div className="profile-container">
-      <header className="header">
-        <div className="logo">Tic-Tac-Toe Online</div>
-        <div className="header-buttons">
-          <button className="btn-profile active">Профиль</button>
-          <button className="btn-logout" onClick={handleLogout}>
-            Выйти
-          </button>
-        </div>
-      </header>
+      <Header />
 
       <div className="profile-content">
         <h1>Профиль пользователя</h1>

@@ -19,10 +19,14 @@ async def get_statistic(user_id: str, session: AsyncSession) -> UserStatisticRea
 
 @session_connection
 async def update_statistic(user_id: str, session: AsyncSession, winner: bool = False, looses: bool = False) -> None:
-    stmt = update(UserStatistic).where(UserStatistic.user_id == user_id).values(
-        games_total=UserStatistic.games_total + 1,
-        games_win=UserStatistic.games_win + 1 if winner else UserStatistic.games_win,
-        games_loose=UserStatistic.games_loose + 1 if looses else UserStatistic.games_loose,
+    stmt = (
+        update(UserStatistic)
+        .where(UserStatistic.user_id == user_id)
+        .values(
+            games_total=UserStatistic.games_total + 1,
+            games_win=UserStatistic.games_win + 1 if winner else UserStatistic.games_win,
+            games_loose=UserStatistic.games_loose + 1 if looses else UserStatistic.games_loose,
+        )
     )
     await session.execute(stmt)
     await session.commit()

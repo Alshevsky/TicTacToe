@@ -2,10 +2,11 @@ import React, { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '@context/AuthContext';
 import { useWebSocket } from '@context/WebSocketContext';
+import Header from '@components/Header';
 import '@styles/Home.css';
 
 const HomePage = () => {
-  const { token, logout } = useContext(AuthContext);
+  const { token } = useContext(AuthContext);
   const navigate = useNavigate();
   const { ws, sendMessage } = useWebSocket();
   const [games, setGames] = useState([]);
@@ -16,6 +17,8 @@ const HomePage = () => {
   const [error, setError] = useState('');
   const [isWaitingModalOpen, setIsWaitingModalOpen] = useState(false);
   const [waitingGameId, setWaitingGameId] = useState(null);
+  const [gameInvite, setGameInvite] = useState(null);
+  const [showInviteModal, setShowInviteModal] = useState(false);
 
   useEffect(() => {
     const fetchGames = async () => {
@@ -84,7 +87,7 @@ const HomePage = () => {
             break;
           case 'gameInvite':
             console.log('Получено приглашение в игру:', data);
-            // Здесь не нужно обрабатывать приглашение, так как это делает WebSocketContext
+            setGameInvite(data.game);
             break;
           case 'auth':
             sendMessage({
@@ -108,6 +111,12 @@ const HomePage = () => {
       }
     };
   }, [ws, waitingGameId, navigate, token, sendMessage]);
+
+  useEffect(() => {
+    if (gameInvite) {
+      setShowInviteModal(true);
+    }
+  }, [gameInvite]);
 
   const handleCreateGame = async () => {
     try {
@@ -138,17 +147,27 @@ const HomePage = () => {
 
   const handleJoinGame = async (game) => {
     try {
-      setWaitingGameId(game.id);
-      setIsWaitingModalOpen(true);
-
-      sendMessage({
-        type: 'gameInvite',
-        gameId: game.id,
-        targetPlayer: game.currentPlayerName,
-        senderPlayer: currentPlayerName,
+      const response = await fetch(`http://localhost:8000/api/v1/games/${game.id}/join`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
       });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Ошибка присоединения к игре');
+      }
+
+      const data = await response.json();
+      if (data.status === 'success') {
+        setWaitingGameId(game.id);
+        setIsWaitingModalOpen(true);
+      } else {
+        setError(data.message || 'Не удалось присоединиться к игре');
+      }
     } catch (err) {
-      setError('Не удалось присоединиться к игре');
+      setError(err.message || 'Не удалось присоединиться к игре');
       setIsWaitingModalOpen(false);
       setWaitingGameId(null);
     }
@@ -173,17 +192,20 @@ const HomePage = () => {
     }
   };
 
+  const handleAcceptInvite = () => {
+    handleJoinGame(gameInvite.id);
+    setShowInviteModal(false);
+    setGameInvite(null);
+  };
+
+  const handleRejectInvite = () => {
+    setShowInviteModal(false);
+    setGameInvite(null);
+  };
+
   return (
-    <div className="home-page">
-      <div className="header">
-        <h1>Крестики-нолики</h1>
-        <div className="user-info">
-          <span>Игрок: {currentPlayerName}</span>
-          <button onClick={logout} className="btn-logout">
-            Выйти
-          </button>
-        </div>
-      </div>
+    <div className="home-container">
+      <Header />
 
       <div className="content">
         <div className="games-section">
@@ -263,6 +285,28 @@ const HomePage = () => {
           <div className="modal-content">
             <div className="loading-spinner"></div>
             <p>Ожидаем принятие приглашения игроком...</p>
+          </div>
+        </div>
+      )}
+
+      {showInviteModal && gameInvite && (
+        <div className="modal">
+          <div className="modal-content">
+            <h2>Приглашение в игру</h2>
+            <p>{gameInvite.creatorName} приглашает вас сыграть в крестики-нолики!</p>
+            <div className="stats">
+              <p>Всего игр: {gameInvite.stats.totalGames}</p>
+              <p>Победы: {gameInvite.stats.wins}</p>
+              <p>Поражения: {gameInvite.stats.losses}</p>
+            </div>
+            <div className="modal-buttons">
+              <button className="btn-accept" onClick={handleAcceptInvite}>
+                Принять
+              </button>
+              <button className="btn-reject" onClick={handleRejectInvite}>
+                Отклонить
+              </button>
+            </div>
           </div>
         </div>
       )}

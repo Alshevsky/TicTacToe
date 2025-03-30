@@ -46,12 +46,26 @@ app.include_router(router=router)
 
 async def auth_user(websocket: WebSocket) -> None | User:
     try:
-        await websocket.send_json({"type": "auth"})
+        # Ждем сообщение с токеном
         token_message = await websocket.receive_json()
+        if not isinstance(token_message, dict) or "token" not in token_message:
+            await websocket.send_json({"type": "auth", "status": "error", "message": "Токен не предоставлен"})
+            return None
+
         user = await JWTWebsocketAuth.validate(token_message["token"])
-        return user
+        if user:
+            await websocket.send_json(
+                {"type": "auth", "status": "success", "user": {"id": str(user.id), "username": user.username}}
+            )
+            return user
+        else:
+            await websocket.send_json({"type": "auth", "status": "error", "message": "Недействительный токен"})
+            return None
     except WebSocketException as e:
         logger.error(f"WebSocket exception: {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Authentication error: {e}")
         return None
 
 
@@ -59,23 +73,27 @@ async def auth_user(websocket: WebSocket) -> None | User:
 async def websocket_endpoint(websocket: WebSocket) -> None:
     await websocket.accept()
     redis_manager = RedisManager()
+    user = None
+
     try:
+        # Аутентифицируем пользователя
         user = await auth_user(websocket)
+        if not user:
+            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+            return
+
         # Подписываемся на канал
         await redis_manager.subscribe_to_channel(settings.REDIS_CHANNEL)
-        
+
         while True:
             try:
                 # Создаем задачи для параллельной обработки сообщений
                 websocket_task = asyncio.create_task(websocket.receive_json())
                 redis_task = asyncio.create_task(redis_manager.get_message())
-                
+
                 # Ждем первое завершившееся событие
-                done, pending = await asyncio.wait(
-                    [websocket_task, redis_task],
-                    return_when=asyncio.FIRST_COMPLETED
-                )
-                
+                done, pending = await asyncio.wait([websocket_task, redis_task], return_when=asyncio.FIRST_COMPLETED)
+
                 # Отменяем оставшиеся задачи
                 for task in pending:
                     task.cancel()
@@ -83,14 +101,14 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         await task
                     except asyncio.CancelledError:
                         pass
-                
+
                 # Обрабатываем результат
                 for task in done:
                     try:
                         result = task.result()
                         if result is None:
                             continue
-                            
+
                         if isinstance(result, dict) and "type" in result:
                             # Определяем источник сообщения по задаче
                             if task == websocket_task:
@@ -104,20 +122,17 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
                         continue
                     except Exception as e:
                         logger.error(f"Error processing message: {e}")
-                        
+
             except WebSocketDisconnect:
                 logger.info("WebSocket disconnected normally")
                 break
             except Exception as e:
-                print(e)
                 logger.error(f"Error in message processing loop: {e}")
                 break
-                
+
     except WebSocketException as e:
-        print(e)
         logger.error(f"WebSocket exception: {e}")
     except WebSocketDisconnect as e:
-        print(e)
         logger.debug("WebSocket disconnected")
     except Exception as e:
         logger.error(f"Error: {e}")
@@ -130,14 +145,12 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
             logger.error(f"Error in cleanup: {e}")
 
 
-async def handle_websocket_message(data: dict, user: User | None, redis_manager: RedisManager, websocket: WebSocket) -> None:
+async def handle_websocket_message(
+    data: dict, user: User | None, redis_manager: RedisManager, websocket: WebSocket
+) -> None:
     try:
         match data["type"]:
             case WebsocketMessageType.GAME_INVITE:
-                if user is None:
-                    if (user := await auth_user(websocket)) is None:
-                        # await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-                        return
                 statistic = await get_statistic(user.id)
                 data["stats"] = statistic.model_dump()
                 await redis_manager.publish_to_channel(settings.REDIS_CHANNEL, orjson.dumps(data))
@@ -147,6 +160,8 @@ async def handle_websocket_message(data: dict, user: User | None, redis_manager:
                 await websocket.send_json(data)
             case WebsocketMessageType.GAME_WIN:
                 await websocket.send_json(data)
+            case "auth":
+                user = await JWTWebsocketAuth.validate(data["token"])
             case _:
                 logger.warning(f"Unknown WebSocket message type received: {data['type']}")
     except Exception as e:
@@ -164,6 +179,7 @@ async def handle_redis_message(data: dict, user: User | None, websocket: WebSock
                     return
                 await websocket.send_json(data)
             case _:
+                await websocket.send_json(data)
                 logger.warning(f"Unknown Redis message type received: {data['type']}")
     except Exception as e:
         logger.error(f"Error handling Redis message: {e}")
@@ -175,11 +191,11 @@ async def handle_redis_message(data: dict, user: User | None, websocket: WebSock
 async def websocket_game_endpoint(game_id: str, websocket: WebSocket) -> None:
     """
     WebSocket endpoint для игровой сессии.
-    
+
     Args:
         game_id: Идентификатор игры
         websocket: WebSocket соединение
-        
+
     Raises:
         WebSocketDisconnect: При разрыве соединения
         ConnectionClosed: При закрытии соединения
@@ -188,23 +204,23 @@ async def websocket_game_endpoint(game_id: str, websocket: WebSocket) -> None:
         await websocket.send_json({"type": "Error", "message": "Game not found"})
         await websocket.close()
         return
-        
+
     await websocket.accept()
     await websocket.send_json({"type": "auth"})
-    
+
     try:
         token_message = await websocket.receive_json()
         user = await JWTWebsocketAuth.validate(token_message["token"])
         websocket_manager = game.websocket_manager
         await websocket_manager.add(user, websocket=websocket)
-        
+
         while True:
             try:
                 data: dict[str, Any] = await websocket.receive_json()
                 if not isinstance(data, dict) or "type" not in data:
                     logger.warning(f"Invalid message format received: {data}")
                     continue
-                    
+
                 match data["type"]:
                     case "sendChatMessage":
                         data["type"] = "chatMessage"
@@ -220,14 +236,14 @@ async def websocket_game_endpoint(game_id: str, websocket: WebSocket) -> None:
                         break
                     case _:
                         logger.warning(f"Unknown message type received: {data['type']}")
-                        
+
             except WebSocketDisconnect:
                 logger.info(f"WebSocket disconnected for user {user}")
                 await websocket_manager.remove(user)
                 if not websocket_manager.active_connections:
                     game_cache_manager.close_game(game_id)
                 break
-                
+
     except Exception as e:
         logger.error(f"Authentication or connection error: {e}")
         await websocket.close()

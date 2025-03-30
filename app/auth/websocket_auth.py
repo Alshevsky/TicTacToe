@@ -1,4 +1,4 @@
-from fastapi import status, WebSocketException
+from fastapi import WebSocketException, status
 from fastapi.security import HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 

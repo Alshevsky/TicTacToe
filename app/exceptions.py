@@ -21,9 +21,13 @@ class BaseError(Exception):
         return repr_msg
 
 
-class GameIsNotCreated(BaseError):
+class BaseGameError(BaseError):
     pass
 
 
-class GameIsFinish(BaseError):
+class GameIsNotCreated(BaseGameError):
+    pass
+
+
+class GameIsFinished(BaseGameError):
     pass
